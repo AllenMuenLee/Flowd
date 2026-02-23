@@ -41,7 +41,8 @@ class CodingAgent:
 
     def _save_ast_map(self):
         ast_map_path = self.project_name + "/ast_map.json"
-        FileMng.save_json(self.ast_map, ast_map_path)
+        normalized = {os.path.normpath(k): v for k, v in self.ast_map.items()}
+        FileMng.save_json(normalized, ast_map_path)
 
     def _load_ast_map(self):
         ast_map_path = self.project_name + "/ast_map.json"
@@ -57,22 +58,37 @@ class CodingAgent:
     def call_nova(self, data):
         file_set = {p for p in data.get("filenames", [])}
         
-        context = SymbolExt.extract_context(self.ast_map, file_set)
+        context = SymbolExt.extract_symbol_tree(self.ast_map, file_set)
+        print(context)
         SYSTEM_PROMPT = """You are a senior software architect and coding agent. the user will give you a description of a coding task, which is a step in a larger project.
-        RULES:
-        1. Provide the structure of the code you see using the comment, and the code you want to implement. No conversational filler or explanations.
-        2. you will be provided a context, which is a ast map of the existing codebase. Use it to understand the existing code structure, and to determine where to add new code. Do NOT repeat existing code. Only provide NEW additions. the ast map is this format:
-        {'File Name.py': [{'name': 'function, variable, etc. name', 'kind': 'type of the symbol', 'line': #, 'parent': 'class or function or none'}, ...], ...}
-        3. If anything is unclear, like if you can't determine the content of a file from the description, or need to know more about the previous code, please write in the following format:
-        ### QUESTION: [Your question here]
-        4. If you have a plan of implementation, output MUST use this format ONLY, for each file:
-        [File Name.py]
+        GENERAL RULES:
+        1. Provide the code you want to implement. No conversational filler or explanations.
+        2. you will be provided a context, which is a symbol table. Use it to context of the current file. The format of the symbol table will be:
+        - [type] `name` (line #) -> #comment
+
+        CODING RULES:
+        1. Raad the symbol table, if there are exisiting code, you're job is to add new code that is not repeated. 
+        2. If there is no existing code, only generate code according to the descrption.
+        3. If you have new code to implementation, output MUST use this format ONLY, this is an example:
+        [main.py]
         ```python
-        # comment the context you see, and you're implementation of the new code.
-        <code>
+        def new_function():
+            #comment
+            pass
         ```
-        Do NOT use "# app.py" comments or any other wrapper.
+        3. comment every functions and classes with this format:
+        function definitions / class definitions:
+            #comment
+
+        QUESTION RULES:
+        1. unless you think the code will not work, don't ask questions.
+        1. If anything like
+            -unclear description
+            -no new code to generate
+        please clarify that using the format below and don't generate the code:
+        ### QUESTION: [Your question here]
         """
+
         prompt = f"""
         CONTEXT OF EXISTING FILES:
         {context}
@@ -80,7 +96,8 @@ class CodingAgent:
         TASK: {data['description']}
         FILES TO GENERATE: {data['filenames']}
 
-        Please give the code structure you see using the commentand the raw code output below
+        Please give the raw code and comment right below the function or class definition, don't put it above
+        or ask questions if the code is repeated or not clear context, please don't skip asking question even if the code is short.
         """
         response = client.chat.completions.create(
             model="nova-2-lite-v1",
@@ -134,6 +151,7 @@ class CodingAgent:
         for filename, code in matches:
             with open(filename, "a", encoding="utf-8") as f:
                 f.write(code)
+                f.write("\n\n")  # Add spacing between code blocks if multiple are added to the same file
 
             with open(filename, "r", encoding="utf-8") as f:
                 full_code = f.read()

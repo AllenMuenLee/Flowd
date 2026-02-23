@@ -166,12 +166,182 @@ def get_ast_map(code, file_path):
     return tags
 
 
-def extract_context(ast_map, file_set):
-    normalized_file_set = {os.path.normpath(p) for p in (file_set or [])}
-    
-    context = {}
+def _summarize_leaf_text(text):
+    text = text.replace("\n", "\\n").strip()
+    if len(text) > 80:
+        return text[:77] + "..."
+    return text
 
-    for i in normalized_file_set:
-        if i in ast_map:
-            context[i] = ast_map[i]
-    return context
+
+def _format_node_label(source_bytes, node, field_name):
+    label = node.type
+    if field_name:
+        label = f"{field_name}: {label}"
+    if node.type in (
+        "identifier",
+        "property_identifier",
+        "string",
+        "string_fragment",
+        "string_content",
+        "integer",
+        "float",
+        "true",
+        "false",
+        "none",
+        "null",
+        "number",
+    ):
+        value = _summarize_leaf_text(_node_text(source_bytes, node))
+        if value:
+            label = f"{label} = {value}"
+    return label
+
+
+def _render_ast_tree(source_bytes, node, max_depth=12, max_nodes=4000):
+    lines = []
+    node_counter = [0]
+
+    def walk(n, prefix, is_last, depth):
+        if node_counter[0] >= max_nodes:
+            return
+        node_counter[0] += 1
+
+        field_name = None
+        parent = n.parent
+        if parent:
+            try:
+                idx = parent.children.index(n)
+                field_name = parent.field_name_for_child(idx)
+            except Exception:
+                field_name = None
+
+        connector = "`- " if is_last else "|- "
+        lines.append(prefix + connector + _format_node_label(source_bytes, n, field_name))
+
+        if depth >= max_depth:
+            return
+
+        children = list(n.children)
+        if not children:
+            return
+
+        next_prefix = prefix + ("   " if is_last else "|  ")
+        for i, child in enumerate(children):
+            walk(child, next_prefix, i == len(children) - 1, depth + 1)
+
+    walk(node, "", True, 0)
+    return "\n".join(lines)
+
+
+def get_ast_tree(code, file_path, max_depth=12, max_nodes=4000):
+    language = _detect_language(file_path)
+    if not language:
+        return "# (unsupported language)"
+    parser = get_parser(language)
+    source_bytes = code.encode("utf-8", errors="ignore")
+    tree = parser.parse(source_bytes)
+    return _render_ast_tree(source_bytes, tree.root_node, max_depth=max_depth, max_nodes=max_nodes)
+
+
+def extract_symbol_tree(ast_map, file_set):
+    normalized_file_set = {os.path.normpath(p) for p in (file_set or [])}
+    context_lines = []
+
+    normalized_ast_map = {}
+    for f, tags in (ast_map or {}).items():
+        norm_f = os.path.normpath(f)
+        normalized_ast_map.setdefault(norm_f, [])
+        if tags:
+            normalized_ast_map[norm_f].extend(tags)
+
+    def _get_leading_comment(lines, line_no):
+        if not line_no or line_no < 1 or line_no > len(lines):
+            return ""
+        idx = line_no - 2
+        comments = []
+        in_block = False
+        while idx >= 0:
+            raw = lines[idx]
+            line = raw.rstrip()
+            stripped = line.strip()
+            if not stripped:
+                if comments:
+                    break
+                idx -= 1
+                continue
+            if stripped.startswith("#"):
+                comments.append(stripped.lstrip("#").strip())
+                idx -= 1
+                continue
+            if stripped.endswith("*/"):
+                in_block = True
+                comments.append(stripped.rstrip("*/").strip())
+                idx -= 1
+                continue
+            if in_block:
+                if stripped.startswith("/*"):
+                    in_block = False
+                    comments.append(stripped.lstrip("/*").strip())
+                else:
+                    comments.append(stripped.lstrip("*").strip())
+                idx -= 1
+                continue
+            if stripped.startswith("//"):
+                comments.append(stripped.lstrip("/").strip())
+                idx -= 1
+                continue
+            break
+        comments = [c for c in reversed(comments) if c]
+        return " ".join(comments)
+
+    def _format_tag(tag, lines):
+        kind = tag.get("kind", "symbol").capitalize()
+        name = tag.get("name", "?")
+        line = tag.get("line")
+        parent = tag.get("parent")
+        line_part = f" (line {line})" if line else ""
+        parent_part = f" in `{parent}`" if parent else ""
+        comment = _get_leading_comment(lines, line) if lines else ""
+        comment_part = comment if comment else "(no comment)"
+        return f"- [{kind}] `{name}`{line_part}{parent_part} -> {comment_part}"
+
+    def _emit_file(path_key, tags):
+        if not tags:
+            context_lines.append(f"File {path_key}:\n# (no symbols)")
+            return
+        lines = None
+        if os.path.exists(path_key):
+            try:
+                with open(path_key, "r", encoding="utf-8") as fh:
+                    lines = fh.read().splitlines()
+            except Exception:
+                lines = None
+        tag_lines = [_format_tag(t, lines) for t in tags]
+        context_lines.append(f"File {path_key}:\n" + "\n".join(tag_lines))
+
+    if normalized_file_set:
+        ast_paths = list(normalized_ast_map.keys())
+        emitted = set()
+        for norm_f in sorted(normalized_file_set):
+            candidates = []
+            if norm_f in normalized_ast_map:
+                candidates = [norm_f]
+            else:
+                norm_tail = norm_f
+                for p in ast_paths:
+                    if p.endswith(norm_tail) or os.path.basename(p) == os.path.basename(norm_tail):
+                        candidates.append(p)
+            if not candidates:
+                candidates = [norm_f]
+
+            for cand in candidates:
+                if cand in emitted:
+                    continue
+                emitted.add(cand)
+                _emit_file(cand, normalized_ast_map.get(cand, []))
+        return "\n".join(context_lines)
+
+    for norm_f, tags in normalized_ast_map.items():
+        _emit_file(norm_f, tags)
+
+    return "\n".join(context_lines)
