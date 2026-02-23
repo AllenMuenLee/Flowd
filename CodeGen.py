@@ -1,14 +1,13 @@
 import os
 import json
 import boto3
-import ast
 import re
 from openai import OpenAI
 from dotenv import load_dotenv
+import FileMng
+import SymbolExt
 
 load_dotenv()
-
-print(os.getenv("AWS_SECRET_ACCESS_KEY"))
 
 client = OpenAI(
     api_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
@@ -16,28 +15,63 @@ client = OpenAI(
 )
 
 class CodingAgent:
-    def __init__(self):
-        self.project_skeletons = {} # Stores code signatures for quota saving
+    def __init__(self, project_name):
+        self.ast_map = {}
+        self.project_name = project_name
+        if not self._load_ast_map():
+            self.initialize_ast_map(self.project_name)
 
-    def get_skeleton(self, code):
-        """Saves quota by sending only function/class headers to the AI."""
+    def initialize_ast_map(self, root_dir):
+        """Populate ast_map by scanning existing source files."""
+        skip_dirs = {".git", "__pycache__"}
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        code = f.read()
+                    norm_path = os.path.normpath(file_path)
+                    self.ast_map[norm_path] = SymbolExt.get_ast_map(
+                        code, file_path=norm_path
+                    )
+                except Exception:
+                    continue
+        self._save_ast_map()
+
+    def _save_ast_map(self):
+        ast_map_path = self.project_name + "/ast_map.json"
+        FileMng.save_json(self.ast_map, ast_map_path)
+
+    def _load_ast_map(self):
+        ast_map_path = self.project_name + "/ast_map.json"
+        if not os.path.exists(ast_map_path):
+            return False
         try:
-            tree = ast.parse(code)
-            skeleton = [l.strip() + " ..." for l in code.splitlines() 
-                        if any(l.strip().startswith(kw) for kw in ["def ", "class "])]
-            return "\n".join(skeleton)
-        except: return "# (Code summary)"
+            raw_map = FileMng.load_json(ast_map_path)
+            self.ast_map = {os.path.normpath(k): v for k, v in raw_map.items()}
+            return True
+        except Exception:
+            return False
 
     def call_nova(self, data):
-        context = "\n".join([f"File {f}:\n{s}" for f, s in self.project_skeletons.items()])
+        file_set = {p for p in data.get("filenames", [])}
+        
+        context = SymbolExt.extract_context(self.ast_map, file_set)
         SYSTEM_PROMPT = """You are a senior software architect and coding agent. the user will give you a description of a coding task, which is a step in a larger project.
         RULES:
-        1. Provide ONLY the code. No conversational filler or explanations.
-        2. If anything is unclear, like if you can't determine the content of a file from the description, or need to know more about the previous code, please write in the following format:
+        1. Provide the structure of the code you see using the comment, and the code you want to implement. No conversational filler or explanations.
+        2. you will be provided a context, which is a ast map of the existing codebase. Use it to understand the existing code structure, and to determine where to add new code. Do NOT repeat existing code. Only provide NEW additions. the ast map is this format:
+        {'File Name.py': [{'name': 'function, variable, etc. name', 'kind': 'type of the symbol', 'line': #, 'parent': 'class or function or none'}, ...], ...}
+        3. If anything is unclear, like if you can't determine the content of a file from the description, or need to know more about the previous code, please write in the following format:
         ### QUESTION: [Your question here]
-        3. for each file of code you want to write, give the format of:
+        4. If you have a plan of implementation, output MUST use this format ONLY, for each file:
         [File Name.py]
-        [Code]
+        ```python
+        # comment the context you see, and you're implementation of the new code.
+        <code>
+        ```
+        Do NOT use "# app.py" comments or any other wrapper.
         """
         prompt = f"""
         CONTEXT OF EXISTING FILES:
@@ -46,7 +80,7 @@ class CodingAgent:
         TASK: {data['description']}
         FILES TO GENERATE: {data['filenames']}
 
-        Please give raw code output below
+        Please give the code structure you see using the commentand the raw code output below
         """
         response = client.chat.completions.create(
             model="nova-2-lite-v1",
@@ -64,11 +98,13 @@ class CodingAgent:
             max_tokens=3000,
             stream=False
         )
+
+        print(response.choices[0].message.content)
         
         return response.choices[0].message.content
 
 
-    def run_procedure(self, procedure, visited_nodes = []):
+    def generate_by_steps(self, procedure, visited_nodes = []):
         """Iterates through the dictionary structure: {ID: {data}}"""
         for step_id, data in procedure.items():
             if (step_id in visited_nodes):
@@ -79,50 +115,38 @@ class CodingAgent:
             # Build context from previously created file skeletons
             
             raw_code = self.call_nova(data)
-            self.save_and_update(data["filenames"][0], raw_code)
+            self.save_and_update(raw_code)
 
             # If this node has children (as IDs), you would handle them here
             # In your format, 'children' is a list of keys to other dict entries
             if data.get("children"):
                 # Filter the main dict for only these children and recurse
                 child_subdict = {c_id: procedure[c_id] for c_id in data["children"] if c_id in procedure}
-                self.run_procedure(child_subdict)
+                self.generate_by_steps(child_subdict)
 
-    def save_and_update(self, file_path, text):
-        pattern = r"\[([^\]]+)\]:?\s*```python\n(.*?)\n```"
+    def save_and_update(self, text):
+        pattern = r"\[([^\]]+)\]:?\s*```(?:[a-zA-Z0-9_+-]*)\n(.*?)\n```"
         
         # re.DOTALL allows the '.' to match newlines within the code block
         matches = re.findall(pattern, text, re.DOTALL)
-        print("text:", text)
-        print(matches)
         
         extracted_data = {}
         for filename, code in matches:
-            extracted_data[filename] = code.strip()
-
-            with open(filename, "w") as f:
-                print(code)
+            with open(filename, "a", encoding="utf-8") as f:
                 f.write(code)
-            
-            self.project_skeletons[filename] = self.get_skeleton(code)
-            print(f"   [File Saved] {file_path}")
 
-        
+            with open(filename, "r", encoding="utf-8") as f:
+                full_code = f.read()
 
-# --- YOUR DATA STRUCTURE ---
-procedure = {
-    "1": {
-        "description": "Create a basic Flask API with a health check route.", 
-        "filenames": ["app.py"],
-        "children": ["2"]
-    },
-    "2": {
-        "description": "Add a /status route that returns JSON {'status': 'ok'}.",
-        "filenames": ["app.py"],
-        "children": []
-    }
-}
+            norm_filename = os.path.normpath(filename)
+            self.ast_map[norm_filename] = SymbolExt.get_ast_map(
+                full_code, file_path=norm_filename
+            )
+            self._save_ast_map()
 
 if __name__ == "__main__":
-    agent = CodingAgent()
-    agent.run_procedure(procedure)
+    project_name = "project_1"
+    agent = CodingAgent(project_name)
+    filepath = project_name + "/procedure.json"
+    procedure = FileMng.get_procedure(filepath)
+    agent.generate_by_steps(procedure)

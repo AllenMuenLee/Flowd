@@ -2,7 +2,7 @@
     "1": {
         "description": "Create a basic Flask API with a health check route.",
         "filenames": [
-            "app.py"
+            "project_1/app.py"
         ],
         "children": [
             "2"
@@ -11,7 +11,7 @@
     "2": {
         "description": "Add a /status route that returns JSON {'status': 'ok'}.",
         "filenames": [
-            "app.py"
+            "project_1/app.py"
         ],
         "children": []
     }
