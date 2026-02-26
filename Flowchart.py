@@ -141,15 +141,19 @@ class Flowchart:
             
             # Extract data
             step_id = step_data['id']
-            step_type = step_data.get('type', 'process')  # Get type if exists
+            step_type = step_data.get('type', 'process')
             description = step_data['description']
+            filenames = step_data.get('filenames', [])  # Get filenames or empty list
             next_steps = step_data['next']
+            framework = step_data.get('framework', '')  # Get framework or empty string
             
             # Create a Step object
             step = Step(
                 id=step_id,
                 description=description,
-                children=next_steps
+                filenames=filenames,
+                children=next_steps,
+                framework=framework
             )
             
             # Add step to flowchart

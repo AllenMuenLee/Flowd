@@ -33,22 +33,32 @@ Return ONLY a valid JSON object with this exact structure (no extra text):
             "id": "step1",
             "type": "start",
             "description": "Start the process",
+            "filenames": [],
+            "framework": "",
             "next": ["step2"]
         }},
         {{
             "id": "step2",
             "type": "process",
             "description": "Do something",
+            "filenames": ["example.py"],
+            "framework": "Python",
             "next": ["step3"]
         }},
         {{
             "id": "step3",
             "type": "end",
             "description": "End the process",
+            "filenames": [],
+            "framework": "",
             "next": []
         }}
     ]
 }}
+
+For each step:
+- "filenames": list of files needed for this step (e.g., ["main.py", "utils.py"])
+- "framework": programming language or tool needed (e.g., "Python", "JavaScript", "React")
 
 Make sure the flowchart makes sense for: {task_description}"""
     
@@ -56,7 +66,7 @@ Make sure the flowchart makes sense for: {task_description}"""
     response = client.chat.completions.create(
         model="nova-2-lite-v1",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant that creates flowcharts. Always respond with valid JSON only."},
+            {"role": "system", "content": "You are a helpful assistant that creates detailed flowcharts with file and framework information. Always respond with valid JSON only."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.7,
