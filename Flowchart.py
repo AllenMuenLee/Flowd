@@ -130,6 +130,7 @@ class Flowchart:
                 step.children.remove(child_id)
             return True
         return False
+        
     def create_from_ai_response(self, ai_data):
         """
         Take AI response data and create flowchart.
@@ -138,15 +139,25 @@ class Flowchart:
         # Loop through each step in AI response
         for step_data in ai_data['steps']:
             
-            # Create a Step object
+            # Extract data
             step_id = step_data['id']
-            step_type = step_data['type']
+            step_type = step_data.get('type', 'process')  # Get type if exists
             description = step_data['description']
             next_steps = step_data['next']
             
+            # Create a Step object
+            step = Step(
+                id=step_id,
+                description=description,
+                children=next_steps
+            )
+            
             # Add step to flowchart
-            self.add_step(step_id, step_type, description, next_steps)
+            self.add_step(step)
+            
+            # Set the first step as start if it's type "start"
+            if step_type == "start" and self.start_id is None:
+                self.set_start(step_id)
         
         return self
-
 

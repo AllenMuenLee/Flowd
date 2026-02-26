@@ -1,0 +1,87 @@
+{
+  "name": "Please generate a python calculator with simple additions, subtraction, multiplication, and division, that runs on the terminal",
+  "start_id": "start",
+  "steps": {
+    "start": {
+      "id": "start",
+      "description": "Begin the Python Calculator Project",
+      "children": [
+        "display_menu"
+      ]
+    },
+    "display_menu": {
+      "id": "display_menu",
+      "description": "Display menu with options: Add, Subtract, Multiply, Divide, Exit",
+      "children": [
+        "get_user_input"
+      ]
+    },
+    "get_user_input": {
+      "id": "get_user_input",
+      "description": "Get user input for operation choice",
+      "children": [
+        "validate_choice"
+      ]
+    },
+    "validate_choice": {
+      "id": "validate_choice",
+      "description": "Check if choice is valid (1-4)",
+      "children": [
+        "invalid_choice",
+        "get_numbers",
+        "get_numbers",
+        "get_numbers",
+        "exit"
+      ]
+    },
+    "invalid_choice": {
+      "id": "invalid_choice",
+      "description": "Display 'Invalid choice' and return to menu",
+      "children": [
+        "display_menu"
+      ]
+    },
+    "get_numbers": {
+      "id": "get_numbers",
+      "description": "Prompt user to enter two numbers",
+      "children": [
+        "perform_operation"
+      ]
+    },
+    "perform_operation": {
+      "id": "perform_operation",
+      "description": "Perform selected operation (addition, subtraction, multiplication, division)",
+      "children": [
+        "check_division_by_zero"
+      ]
+    },
+    "check_division_by_zero": {
+      "id": "check_division_by_zero",
+      "description": "Check for division by zero if operation is division",
+      "children": [
+        "display_error",
+        "display_result",
+        "exit"
+      ]
+    },
+    "display_error": {
+      "id": "display_error",
+      "description": "Display 'Cannot divide by zero' and return to menu",
+      "children": [
+        "display_menu"
+      ]
+    },
+    "display_result": {
+      "id": "display_result",
+      "description": "Display the result of the operation",
+      "children": [
+        "display_menu"
+      ]
+    },
+    "exit": {
+      "id": "exit",
+      "description": "Exit the calculator",
+      "children": []
+    }
+  }
+}

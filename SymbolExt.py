@@ -154,6 +154,32 @@ def _walk_symbols(source_bytes, node, language, class_stack, tags):
         return
 
 
+def _walk_python_imports(source_bytes, node, imports):
+    if node.type in ("import_statement", "import_from_statement"):
+        text = _node_text(source_bytes, node).strip()
+        if text:
+            imports.append({
+                "name": text,
+                "kind": "import",
+                "line": node.start_point[0] + 1,
+            })
+    for child in node.children:
+        _walk_python_imports(source_bytes, child, imports)
+
+
+def _walk_js_imports(source_bytes, node, imports):
+    if node.type == "import_statement":
+        text = _node_text(source_bytes, node).strip()
+        if text:
+            imports.append({
+                "name": text,
+                "kind": "import",
+                "line": node.start_point[0] + 1,
+            })
+    for child in node.children:
+        _walk_js_imports(source_bytes, child, imports)
+
+
 def get_ast_map(code, file_path):
     language = _detect_language(file_path)
     if not language:
@@ -164,6 +190,21 @@ def get_ast_map(code, file_path):
     tags = []
     _walk_symbols(source_bytes, tree.root_node, language, [], tags)
     return tags
+
+
+def list_imports(code, file_path):
+    language = _detect_language(file_path)
+    if not language:
+        return []
+    parser = get_parser(language)
+    source_bytes = code.encode("utf-8", errors="ignore")
+    tree = parser.parse(source_bytes)
+    imports = []
+    if language == "python":
+        _walk_python_imports(source_bytes, tree.root_node, imports)
+    elif language in ("javascript", "typescript", "tsx"):
+        _walk_js_imports(source_bytes, tree.root_node, imports)
+    return imports
 
 
 def _summarize_leaf_text(text):
