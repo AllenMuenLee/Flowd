@@ -18,13 +18,11 @@ def main():
     
     # Step 2: Generate flowchart from AI
     print("Generating flowchart with AI...")
-    try:
-        ai_data = generate_flowchart_from_description(task_description)
-        print("✓ AI generated flowchart structure")
-        print()
-    except Exception as e:
-        print(f"Error calling AI: {e}")
-        return
+    
+    ai_data = generate_flowchart_from_description(task_description)
+    print("✓ AI generated flowchart structure")
+    print()
+    
     
     # Step 3: Create Flowchart object with name and framework
     framework = ai_data.get('framework', '')  # Get framework from AI response

@@ -85,9 +85,7 @@ Make sure the flowchart makes sense for: {task_description}"""
         ai_response = re.sub(r'\n```\s*$', '', ai_response)
     
     # Parse JSON
-    try:
-        flowchart_data = json.loads(ai_response)
-    except json.JSONDecodeError as e:
-        raise Exception(f"Could not parse JSON: {e}\nResponse: {ai_response[:200]}")
+    
+    flowchart_data = json.loads(ai_response)
     
     return flowchart_data
