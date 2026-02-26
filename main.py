@@ -26,8 +26,9 @@ def main():
         print(f"Error calling AI: {e}")
         return
     
-    # Step 3: Create Flowchart object with name
-    my_flowchart = Flowchart(task_description)  # ✅ Added name parameter
+    # Step 3: Create Flowchart object with name and framework
+    framework = ai_data.get('framework', '')  # Get framework from AI response
+    my_flowchart = Flowchart(name=task_description, framework=framework)
     my_flowchart.create_from_ai_response(ai_data)
     print("✓ Flowchart created")
     print()

@@ -1,6 +1,6 @@
 class Step:
     
-    def __init__(self, id, description, filenames, children, framework):
+    def __init__(self, id, description, filenames, children):
         """
         Initialize a Step object (Node)s.
         
@@ -13,7 +13,6 @@ class Step:
         self.description = description
         self.filenames = filenames
         self.children = children
-        self.framework = framework
     
     def step_to_dictionary(self):
         """Convert Step instance to dictionary."""
@@ -22,17 +21,16 @@ class Step:
             'description': self.description,
             'filenames': self.filenames,
             'children': self.children,
-            'framework': self.framework
         }
 
     def __repr__(self):
         """Return a string representation of the Step object."""
-        return (f"Step(id='{self.id}', filenames={self.filenames}, description='{self.description}', children={self.children}, framework='{self.framework}'")
+        return (f"Step(id='{self.id}', filenames={self.filenames}, description='{self.description}', children={self.children}")
 
 
 
 
 def dictionary_to_step(dictionary):
     """Create Step instance from dictionary."""
-    step = Step(dictionary['id'], dictionary['description'], dictionary['filenames'], dictionary['children'], dictionary['framework'])
+    step = Step(dictionary['id'], dictionary['description'], dictionary['filenames'], dictionary['children'])
     return step
