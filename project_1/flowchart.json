@@ -4,57 +4,70 @@
   "steps": {
     "step1": {
       "id": "step1",
-      "description": "Start the process",
+      "description": "Start the process of creating a calculator",
       "filenames": [],
+      "files_to_import": [],
       "children": [
         "step2"
       ]
     },
     "step2": {
       "id": "step2",
-      "description": "Set up the project environment",
+      "description": "Set up the project structure",
       "filenames": [
-        "project_1/setup.py"
+        "project_1/app.py",
+        "project_1/templates/index.html",
+        "project_1/static/styles.css",
+        "project_1/static/script.js"
       ],
+      "files_to_import": [],
       "children": [
         "step3"
       ]
     },
     "step3": {
       "id": "step3",
-      "description": "Create the main application file",
+      "description": "Create the HTML layout for the calculator",
       "filenames": [
-        "project_1/app.py"
+        "project_1/templates/index.html"
       ],
+      "files_to_import": [],
       "children": [
         "step4"
       ]
     },
     "step4": {
       "id": "step4",
-      "description": "Create the calculator logic",
+      "description": "Style the calculator using CSS",
       "filenames": [
-        "project_1/calculator.py"
+        "project_1/static/styles.css"
       ],
+      "files_to_import": [],
       "children": [
         "step5"
       ]
     },
     "step5": {
       "id": "step5",
-      "description": "Create the Flask routes for the calculator",
+      "description": "Add JavaScript functionality to the calculator",
       "filenames": [
-        "project_1/routes.py"
+        "project_1/static/script.js"
       ],
+      "files_to_import": [],
       "children": [
         "step6"
       ]
     },
     "step6": {
       "id": "step6",
-      "description": "Integrate the routes with the main application",
+      "description": "Set up the Flask app to serve the calculator",
       "filenames": [
         "project_1/app.py"
+      ],
+      "files_to_import": [
+        "project_1/templates/index.html",
+        "project_1/static/styles.css",
+        "project_1/static/script.js"
       ],
       "children": [
         "step7"
@@ -62,30 +75,13 @@
     },
     "step7": {
       "id": "step7",
-      "description": "Set up the SQLite database",
-      "filenames": [
-        "project_1/database.py"
-      ],
-      "children": [
-        "step8"
-      ]
-    },
-    "step8": {
-      "id": "step8",
-      "description": "Integrate the database with the application",
-      "filenames": [
+      "description": "Run the Flask app and test the calculator",
+      "filenames": [],
+      "files_to_import": [
         "project_1/app.py"
       ],
-      "children": [
-        "step9"
-      ]
-    },
-    "step9": {
-      "id": "step9",
-      "description": "End the process",
-      "filenames": [],
       "children": []
     }
   },
-  "framework": "Python, Flask, SQLite"
+  "framework": "Python, Flask, HTML, CSS, JavaScript"
 }

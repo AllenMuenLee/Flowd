@@ -11,7 +11,7 @@ def generate_flowchart_from_description(task_description):
     Send task description to Amazon Nova AI.
     Get back flowchart structure.
     """
-    
+    print("start")
     # Get API key from environment variable
     api_key = os.getenv("NOVA_API_KEY")
     
@@ -27,10 +27,10 @@ def generate_flowchart_from_description(task_description):
     
     # Create the prompt for Nova
     prompt = f"""Create a flowchart for this task: {task_description}
-include id, type, description, filenames, files_to_import, and next step for each step.
+include id, type, description (describe what this step does), filenames (files to create or add code), files_to_import (previous built files to import, not api), and next step for each step.
 Return ONLY a valid JSON object with this exact structure (no extra text):
 {{
-    "framework": "Python, Flask, SQLite",
+    "framework": "Python, Flask, HTML, CSS, JavaScript",
     "steps": [
         {{
             "id": "step1",
@@ -44,7 +44,7 @@ Return ONLY a valid JSON object with this exact structure (no extra text):
             "id": "step2",
             "type": "process",
             "description": "Do something",
-            "filenames": ["library.py"],
+            "filenames": ["library.extension"],
             "files_to_import": [],
             "next": ["step3"]
         }},
@@ -52,8 +52,8 @@ Return ONLY a valid JSON object with this exact structure (no extra text):
             "id": "step3",
             "type": "process",
             "description": "Do something",
-            "filenames": ["example.py"],
-            "files_to_import": ["library.py"],
+            "filenames": ["example.extension"],
+            "files_to_import": ["library.extension"],
             "next": ["step4"]
         }},
         {{

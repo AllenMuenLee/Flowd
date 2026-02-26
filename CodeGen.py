@@ -81,7 +81,7 @@ class CodingAgent:
         1. Raad the symbol table, it includes the context
         First part includes context of the files you need to edit / add, and files you need to import and use its existing functions.
         Second part, after IMPORT: are the library that are already imported, you don't have to import again.
-        2. If there is no existing code, only generate code according to the descrption.
+        2. If there is no existing code, generate code according to the descrption.
         3. The output MUST strictly follow this format:
         [Filename]
         ```
@@ -103,6 +103,7 @@ class CodingAgent:
 
         TASK: {step['description']}
         FILES TO GENERATE: {step['filenames']}
+        FILES YOU MIGHT NEED TO IMPORT: {step['files_to_import']}
 
         Please give the list of functions and imports you see from the symbol table as a comment
         Please give the raw code and docstring right below the function or class definition, don't put it above
@@ -126,10 +127,12 @@ class CodingAgent:
                 stream=False
             )
             if type(response.choices[0].message.content.strip()) == type(None):
+                print("nothing generated")
                 return self.call_nova(step)
             return response.choices[0].message.content
         except Exception as e:
             if ("Error code: 429" in str(e)):
+                print(e)
                 time.sleep(10)
                 return self.call_nova(step)
 

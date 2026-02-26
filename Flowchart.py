@@ -152,13 +152,16 @@ class Flowchart:
             step_type = step_data.get('type', 'process')  # Get type if exists
             description = step_data['description']
             filenames = step_data.get('filenames', [])
+            files_to_import = step_data.get('files_to_import', [])
             next_steps = step_data['next']
+
             
             # Create a Step object
             step = Step(
                 id=step_id,
                 description=description,
                 filenames=[self.project_name + '/' + f for f in filenames],
+                files_to_import=[self.project_name + '/' + f for f in files_to_import],
                 children=next_steps
             )
             
