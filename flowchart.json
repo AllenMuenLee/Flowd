@@ -1,87 +1,107 @@
 {
-  "name": "Please generate a python calculator with simple additions, subtraction, multiplication, and division, that runs on the terminal",
-  "start_id": "start",
+  "name": "create a web API with database",
+  "start_id": "step1",
   "steps": {
-    "start": {
-      "id": "start",
-      "description": "Begin the Python Calculator Project",
+    "step1": {
+      "id": "step1",
+      "description": "Start the process",
+      "filenames": [],
       "children": [
-        "display_menu"
+        "step2"
       ]
     },
-    "display_menu": {
-      "id": "display_menu",
-      "description": "Display menu with options: Add, Subtract, Multiply, Divide, Exit",
+    "step2": {
+      "id": "step2",
+      "description": "Set up the project structure",
+      "filenames": [
+        "requirements.txt",
+        "app.py",
+        "config.py"
+      ],
       "children": [
-        "get_user_input"
+        "step3"
       ]
     },
-    "get_user_input": {
-      "id": "get_user_input",
-      "description": "Get user input for operation choice",
+    "step3": {
+      "id": "step3",
+      "description": "Install dependencies",
+      "filenames": [
+        "requirements.txt"
+      ],
       "children": [
-        "validate_choice"
+        "step4"
       ]
     },
-    "validate_choice": {
-      "id": "validate_choice",
-      "description": "Check if choice is valid (1-4)",
+    "step4": {
+      "id": "step4",
+      "description": "Initialize Flask application and configure SQLite database",
+      "filenames": [
+        "app.py",
+        "config.py"
+      ],
       "children": [
-        "invalid_choice",
-        "get_numbers",
-        "get_numbers",
-        "get_numbers",
-        "exit"
+        "step5"
       ]
     },
-    "invalid_choice": {
-      "id": "invalid_choice",
-      "description": "Display 'Invalid choice' and return to menu",
+    "step5": {
+      "id": "step5",
+      "description": "Define database models using SQLAlchemy",
+      "filenames": [
+        "models.py"
+      ],
       "children": [
-        "display_menu"
+        "step6"
       ]
     },
-    "get_numbers": {
-      "id": "get_numbers",
-      "description": "Prompt user to enter two numbers",
+    "step6": {
+      "id": "step6",
+      "description": "Create database tables",
+      "filenames": [
+        "db_create.py"
+      ],
       "children": [
-        "perform_operation"
+        "step7"
       ]
     },
-    "perform_operation": {
-      "id": "perform_operation",
-      "description": "Perform selected operation (addition, subtraction, multiplication, division)",
+    "step7": {
+      "id": "step7",
+      "description": "Implement API routes and endpoints",
+      "filenames": [
+        "app.py",
+        "routes.py"
+      ],
       "children": [
-        "check_division_by_zero"
+        "step8"
       ]
     },
-    "check_division_by_zero": {
-      "id": "check_division_by_zero",
-      "description": "Check for division by zero if operation is division",
+    "step8": {
+      "id": "step8",
+      "description": "Add error handling and validation",
+      "filenames": [
+        "app.py",
+        "routes.py",
+        "validators.py"
+      ],
       "children": [
-        "display_error",
-        "display_result",
-        "exit"
+        "step9"
       ]
     },
-    "display_error": {
-      "id": "display_error",
-      "description": "Display 'Cannot divide by zero' and return to menu",
+    "step9": {
+      "id": "step9",
+      "description": "Test the API endpoints using a tool like Postman or curl",
+      "filenames": [
+        "test_api.py"
+      ],
       "children": [
-        "display_menu"
+        "step10"
       ]
     },
-    "display_result": {
-      "id": "display_result",
-      "description": "Display the result of the operation",
-      "children": [
-        "display_menu"
-      ]
-    },
-    "exit": {
-      "id": "exit",
-      "description": "Exit the calculator",
+    "step10": {
+      "id": "step10",
+      "description": "End the process",
+      "filenames": [],
       "children": []
     }
-  }
+  },
+  "framework": "Python, Flask, SQLite"
 }
