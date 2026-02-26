@@ -11,6 +11,7 @@ class Flowchart:
         self.steps = {} #Dictionary {step.id : step}
         self.start_id = None #String
         self.framework = framework #String
+        self.project_name = "project_1"
     
     def add_step(self, step):
         """Add a step to the flowchart."""
@@ -157,7 +158,7 @@ class Flowchart:
             step = Step(
                 id=step_id,
                 description=description,
-                filenames=filenames,
+                filenames=[self.project_name + '/' + f for f in filenames],
                 children=next_steps
             )
             

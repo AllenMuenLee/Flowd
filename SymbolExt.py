@@ -154,30 +154,36 @@ def _walk_symbols(source_bytes, node, language, class_stack, tags):
         return
 
 
-def _walk_python_imports(source_bytes, node, imports):
+def _walk_python_imports(source_bytes, node, imports, include_line=False):
     if node.type in ("import_statement", "import_from_statement"):
         text = _node_text(source_bytes, node).strip()
         if text:
-            imports.append({
-                "name": text,
-                "kind": "import",
-                "line": node.start_point[0] + 1,
-            })
+            if include_line:
+                imports.append({
+                    "name": text,
+                    "kind": "import",
+                    "line": node.start_point[0] + 1,
+                })
+            else:
+                imports.append(text)
     for child in node.children:
-        _walk_python_imports(source_bytes, child, imports)
+        _walk_python_imports(source_bytes, child, imports, include_line=include_line)
 
 
-def _walk_js_imports(source_bytes, node, imports):
+def _walk_js_imports(source_bytes, node, imports, include_line=False):
     if node.type == "import_statement":
         text = _node_text(source_bytes, node).strip()
         if text:
-            imports.append({
-                "name": text,
-                "kind": "import",
-                "line": node.start_point[0] + 1,
-            })
+            if include_line:
+                imports.append({
+                    "name": text,
+                    "kind": "import",
+                    "line": node.start_point[0] + 1,
+                })
+            else:
+                imports.append(text)
     for child in node.children:
-        _walk_js_imports(source_bytes, child, imports)
+        _walk_js_imports(source_bytes, child, imports, include_line=include_line)
 
 
 def get_ast_map(code, file_path):
@@ -192,18 +198,67 @@ def get_ast_map(code, file_path):
     return tags
 
 
-def list_imports(code, file_path):
-    language = _detect_language(file_path)
-    if not language:
-        return []
-    parser = get_parser(language)
-    source_bytes = code.encode("utf-8", errors="ignore")
-    tree = parser.parse(source_bytes)
+def initialize_ast_map(root_dir, ast_map=None):
+    """Populate ast_map by scanning existing source files."""
+    skip_dirs = {".git", "__pycache__"}
+    ast_map = ast_map or {}
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    code = f.read()
+                norm_path = os.path.normpath(file_path)
+                ast_map[norm_path] = get_ast_map(code, file_path=norm_path)
+            except Exception:
+                continue
+    return ast_map
+
+
+def list_imports(code, fileset, include_line=False):
+    file_paths = list(fileset.keys())
+
     imports = []
-    if language == "python":
-        _walk_python_imports(source_bytes, tree.root_node, imports)
-    elif language in ("javascript", "typescript", "tsx"):
-        _walk_js_imports(source_bytes, tree.root_node, imports)
+    seen_paths = set()
+    for path in file_paths:
+        if not path:
+            continue
+        norm_path = os.path.normpath(path)
+        if norm_path in seen_paths:
+            continue
+        seen_paths.add(norm_path)
+
+        language = _detect_language(norm_path)
+        if not language:
+            continue
+
+        file_code = None
+        if code is not None and path == fileset:
+            file_code = code
+        elif os.path.exists(norm_path):
+            try:
+                with open(norm_path, "r", encoding="utf-8") as fh:
+                    file_code = fh.read()
+            except Exception:
+                file_code = None
+
+        if file_code is None:
+            continue
+
+        parser = get_parser(language)
+        source_bytes = file_code.encode("utf-8", errors="ignore")
+        tree = parser.parse(source_bytes)
+        file_imports = []
+        if language == "python":
+            _walk_python_imports(source_bytes, tree.root_node, file_imports, include_line=include_line)
+        elif language in ("javascript", "typescript", "tsx"):
+            _walk_js_imports(source_bytes, tree.root_node, file_imports, include_line=include_line)
+
+        imports.append(f"#{norm_path}")
+        if file_imports:
+            imports.extend(file_imports)
+
     return imports
 
 

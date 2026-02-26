@@ -6,6 +6,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import FileMng
 import SymbolExt
+from pathlib import Path
 
 load_dotenv()
 
@@ -39,7 +40,19 @@ class CodingAgent:
             return False
 
     def call_nova(self, step):
-        file_set = {p for p in step.get("filenames", [])}
+        file_set = {}
+
+        print(step)
+
+        if (not step['filenames']):
+            return ""
+
+        for f in step['filenames']:
+            norm_f = os.path.normpath(f)
+            if norm_f in self.ast_map:
+                file_set[norm_f] = self.ast_map[norm_f]
+            else:
+                file_set[norm_f] = SymbolExt.get_ast_map("", file_path=norm_f)
         
         context = SymbolExt.extract_symbol_tree(self.ast_map, file_set)
         import_list = SymbolExt.list_imports(None, file_set)
@@ -101,7 +114,7 @@ class CodingAgent:
         return response.choices[0].message.content
 
 
-    def generate(self, step):
+    def generate(self, procedure,step):
             
         raw_code = self.call_nova(step)
         if "### QUESTION:" in raw_code:
@@ -112,7 +125,7 @@ class CodingAgent:
             # If this node has children (as IDs), you would handle them here
             # In your format, 'children' is a list of keys to other dict entries
         for c in step["children"]:
-            self.generate(c)
+            self.generate(procedure, procedure["steps"][c])
 
         return None
 
@@ -132,6 +145,9 @@ class CodingAgent:
                 full_code = f.read()
 
             norm_filename = os.path.normpath(filename)
+            norm_filename = Path(norm_filename)
+            norm_fliename.parent.mkdir(parents=True, exist_ok=True)
+
             self.ast_map[norm_filename] = SymbolExt.get_ast_map(
                 full_code, file_path=norm_filename
             )
@@ -140,6 +156,6 @@ class CodingAgent:
 if __name__ == "__main__":
     project_name = "project_1"
     agent = CodingAgent(project_name)
-    filepath = project_name + "/procedure.json"
+    filepath = project_name + "/flowchart.json"
     procedure = FileMng.get_procedure(filepath)
-    agent.generate(procedure["start"])
+    agent.generate(procedure, procedure["steps"][procedure["start_id"]])
