@@ -71,15 +71,24 @@ Return ONLY a valid JSON object with this exact structure (no extra text):
 - "filenames": list of files needed for each individual step
 
 Make sure the flowchart makes sense for: {task_description}"""
+
+    system_prompt = """You are a helpful assistant that creates detailed flowcharts with file information. Always respond with valid JSON only.
+    For each step you create, the must follow this rule:
+    1. the less file created the better.
+    2. The step must describe the functions and elements to create in detail.
+    3. Review the flowchart, make sure it efficiently use each file's existing functions if created previously.
+    4. The framework the user put in the example is just for format reference, you can choose any framework.
+    5. write the main file at the very end.
+    """
     
     # Call Nova AI
     response = client.chat.completions.create(
         model="nova-pro-v1",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant that creates detailed flowcharts with file information. Always respond with valid JSON only."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.7,
+        temperature=0.5,
         max_tokens=2000
     )
     print(prompt)

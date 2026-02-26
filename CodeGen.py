@@ -93,7 +93,7 @@ class CodingAgent:
         ```
         ...
         4. when indicating the filename, don't use # filename.py, use [filename.py]
-        5. check all of the requested files are included.
+        5. all files in FILES TO GENERATE must be generated.
         6. add docstring for each function and class.
         """
 
@@ -122,8 +122,9 @@ class CodingAgent:
                         "content": prompt
                     },
                 ],
-                temperature=0.1,
+                temperature=0.2,
                 max_tokens=3000,
+                top_p=0.9,
                 stream=False
             )
             if type(response.choices[0].message.content.strip()) == type(None):
