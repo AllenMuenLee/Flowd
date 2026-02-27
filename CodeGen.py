@@ -8,7 +8,7 @@ import FileMng
 import SymbolExt
 from pathlib import Path
 import time
-import Command
+import Terminal
 
 load_dotenv()
 
@@ -48,7 +48,9 @@ class CodingAgent:
         file_set = {}
 
         for c in step['command']:
-            Command.run_command(c, cwd=self.project_name + '/' + self.project_name)
+            output = Terminal.run_command(c, cwd=self.project_name + '/' + self.project_name)
+            if output:
+                print(output, end="")
 
         if (not step['filenames']):
             return ""
