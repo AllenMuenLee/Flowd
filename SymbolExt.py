@@ -9,9 +9,6 @@ EXT_TO_LANG = {
     ".tsx": "tsx",
 }
 
-PY_DEF_TYPES = {"function_definition", "class_definition"}
-JS_DEF_TYPES = {"function_declaration", "method_definition", "class_declaration"}
-CALL_TYPES = {"call", "call_expression"}
 
 
 def _detect_language(file_path):
@@ -331,124 +328,6 @@ def _render_ast_tree(source_bytes, node, max_depth=12, max_nodes=4000):
 
     walk(node, "", True, 0)
     return "\n".join(lines)
-
-
-def _node_contains_line(node, line_idx):
-    return node.start_point[0] <= line_idx <= node.end_point[0]
-
-
-def _find_deepest_node_at_line(root, line_idx):
-    best = None
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        if not _node_contains_line(node, line_idx):
-            continue
-        if best is None:
-            best = node
-        else:
-            best_span = best.end_byte - best.start_byte
-            node_span = node.end_byte - node.start_byte
-            if node_span <= best_span:
-                best = node
-        for child in node.children:
-            if _node_contains_line(child, line_idx):
-                stack.append(child)
-    return best
-
-
-def _iter_nodes(root):
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        yield node
-        children = list(node.children)
-        stack.extend(reversed(children))
-
-
-def _collect_call_names_on_line(source_bytes, root, line_idx):
-    names = []
-    for node in _iter_nodes(root):
-        if not _node_contains_line(node, line_idx):
-            continue
-        if node.type not in CALL_TYPES:
-            continue
-        callee = node.child_by_field_name("function")
-        if callee:
-            name = _get_name(source_bytes, callee)
-            if name:
-                names.append(name)
-    return names
-
-
-def get_related_ast(file_path, line_number, code=None):
-    if not file_path or not isinstance(line_number, int):
-        return {"file": file_path, "line": line_number, "items": []}
-
-    norm_path = os.path.normpath(file_path)
-    if code is None and os.path.exists(norm_path):
-        try:
-            with open(norm_path, "r", encoding="utf-8") as fh:
-                code = fh.read()
-        except Exception:
-            code = None
-    if not code:
-        return {"file": norm_path, "line": line_number, "items": []}
-
-    language = _detect_language(norm_path)
-    if not language:
-        return {"file": norm_path, "line": line_number, "items": []}
-
-    parser = get_parser(language)
-    source_bytes = code.encode("utf-8", errors="ignore")
-    tree = parser.parse(source_bytes)
-
-    line_idx = max(0, line_number - 1)
-    target = _find_deepest_node_at_line(tree.root_node, line_idx)
-    if not target:
-        return {"file": norm_path, "line": line_number, "items": []}
-
-    def_types = PY_DEF_TYPES if language == "python" else JS_DEF_TYPES
-
-    items = []
-    seen = set()
-
-    def add_node(node, kind):
-        if node is None:
-            return
-        name = _get_name(source_bytes, node) or ""
-        key = (kind, name, node.start_byte, node.end_byte)
-        if key in seen:
-            return
-        seen.add(key)
-        items.append({
-            "kind": kind,
-            "name": name,
-            "line": node.start_point[0] + 1,
-            "ast": _render_ast_tree(source_bytes, node),
-        })
-
-    n = target
-    while n:
-        if n.type in def_types:
-            kind = "class" if "class" in n.type else "function"
-            if n.type == "method_definition":
-                kind = "method"
-            add_node(n, kind)
-        n = n.parent
-
-    call_names = set(_collect_call_names_on_line(source_bytes, tree.root_node, line_idx))
-    if call_names:
-        for node in _iter_nodes(tree.root_node):
-            if node.type in def_types:
-                name = _get_name(source_bytes, node)
-                if name and name in call_names:
-                    kind = "class" if "class" in node.type else "function"
-                    if node.type == "method_definition":
-                        kind = "method"
-                    add_node(node, kind)
-
-    return {"file": norm_path, "line": line_number, "items": items}
 
 
 def get_ast_tree(code, file_path, max_depth=12, max_nodes=4000):
