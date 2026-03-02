@@ -1,17 +1,20 @@
-from Step import Step, dictionary_to_step
+import os
+import uuid
+from src.core.Step import Step, dictionary_to_step
 import json
 
 
 class Flowchart:
     """In-memory graph of steps; utility helpers to manage nodes/edges."""
     
-    def __init__(self, name, framework, project_name):
+    def __init__(self, name, framework, project_path, flowchart_id=None):
         """This method initializes the flowchart with the given name"""
         self.name = name #String
         self.steps = {} #Dictionary {step.id : step}
         self.start_id = None #String
         self.framework = framework #String
-        self.project_name = project_name
+        self.project_root = os.path.abspath(project_path)
+        self.flowchart_id = flowchart_id or uuid.uuid4().hex
     
     def add_step(self, step):
         """Add a step to the flowchart."""
@@ -66,12 +69,20 @@ class Flowchart:
             'name': self.name,
             'start_id': self.start_id,
             'steps': steps_dict,
-            'framework': self.framework
+            'framework': self.framework,
+            'project_root': self.project_root,
+            'flowchart_id': self.flowchart_id
         }
 
-    def dictionary_to_flowchart(self, dictionary):
+    def dictionary_to_flowchart(self, dictionary, project_path=None):
         """Create flowchart from dictionary."""
-        flowchart = Flowchart(dictionary['name'])
+        project_root = dictionary.get('project_root') or project_path or ""
+        flowchart = Flowchart(
+            dictionary['name'],
+            dictionary.get('framework', ""),
+            project_root,
+            flowchart_id=dictionary.get('flowchart_id')
+        )
         flowchart.start_id = dictionary['start_id']
         
         # Loop through each step in the dictionary
@@ -82,23 +93,29 @@ class Flowchart:
         
         return flowchart
     
-    def save_to_file(self, filename):
+    def save_to_file(self, project_id):
         """Save flowchart to JSON file."""
         
         # Convert flowchart to dictionary
-        flowchart_dict = self.flowchart_to_dictionary()
+        appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+        os.makedirs(appdata_root, exist_ok=True)
+        projects_path = os.path.join(appdata_root, f"{project_id}.flowchart.json")
         
         # Open file and write JSON
-        with open(filename, 'w') as file:
+        with open(project_path, 'w') as file:
             json.dump(flowchart_dict, file, indent=2)
         
         print(f"Flowchart saved to {filename}")
     
-    def load_from_file(self, filename):
+    def load_from_file(self, project_id):
         """Load flowchart from JSON file."""
+
+        appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+        os.makedirs(appdata_root, exist_ok=True)
+        projects_path = os.path.join(appdata_root, f"{project_id}.flowchart.json")
         
         # Open file and read JSON
-        with open(filename, 'r') as file:
+        with open(projects_path, 'r') as file:
             flowchart_dict = json.load(file)
         
         # Convert dictionary back to Flowchart object
@@ -156,7 +173,7 @@ class Flowchart:
             command = step_data.get('command', [])
             next_steps = step_data['next']
 
-            filepath = self.project_name + '/' + self.project_name + '/'
+            filepath = self.project_root + os.sep
             # Create a Step object
             step = Step(
                 id=step_id,

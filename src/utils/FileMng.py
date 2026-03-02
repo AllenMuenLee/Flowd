@@ -24,9 +24,24 @@ def init_procedure_files(procedure):
                 pass
             f.close()
 
+def save_project(project_id, project_path):
+    appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+    os.makedirs(appdata_root, exist_ok=True)
+    projects_path = os.path.join(appdata_root, "projects.json")
 
-def add_folder(folder_name):
-    if not folder_name:
-        return False
-    os.makedirs(folder_name, exist_ok=True)
-    return True
+    if os.path.exists(projects_path):
+        with open(projects_path, "r", encoding="utf-8") as p:
+            try:
+                projects = json.load(p)
+            except Exception:
+                projects = []
+    else:
+        projects = []
+
+    projects.append({
+        "id": project_id,
+        "project_root": project_path,
+    })
+
+    with open(projects_path, "w", encoding="utf-8") as p:
+        json.dump(projects, p, indent=2)

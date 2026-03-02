@@ -1,3 +1,5 @@
+import json
+import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -12,9 +14,15 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QFrame,
     QGraphicsDropShadowEffect,
+    QMessageBox,
+    QFileDialog,
 )
 
 from src.utils import FileMng
+from src.core.ai_helper import generate_flowchart_from_description
+from src.core.Flowchart import Flowchart
+from src.utils.CacheMng import save_current_project_id
+from src.pages.loadingScreen import LoadingScreen
 
 def _apply_theme(widget: QWidget) -> None:
     style_path = Path(__file__).resolve().parents[1] / "style" / "project_builder.qss"
@@ -57,11 +65,20 @@ def build_project_builder() -> QWidget:
     card_layout.setContentsMargins(20, 20, 20, 20)
     card_layout.setSpacing(16)
 
-    title_label = QLabel("Project Title")
+    title_label = QLabel("Project Path")
     title_label.setObjectName("FieldLabel")
     title_input = QLineEdit()
-    title_input.setPlaceholderText("e.g. Scientific Calculator")
+    title_input.setPlaceholderText("Select or enter a project folder")
     title_input.setObjectName("TitleInput")
+
+    browse_button = QPushButton("Browse")
+    browse_button.setObjectName("BrowseButton")
+    browse_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    path_row = QHBoxLayout()
+    path_row.setSpacing(8)
+    path_row.addWidget(title_input, 1)
+    path_row.addWidget(browse_button)
 
     desc_label = QLabel("Project Description")
     desc_label.setObjectName("FieldLabel")
@@ -82,7 +99,7 @@ def build_project_builder() -> QWidget:
     button_row.addWidget(create_button)
 
     card_layout.addWidget(title_label)
-    card_layout.addWidget(title_input)
+    card_layout.addLayout(path_row)
     card_layout.addWidget(desc_label)
     card_layout.addWidget(desc_input)
     card_layout.addWidget(hint_label)
@@ -91,21 +108,48 @@ def build_project_builder() -> QWidget:
     outer.addWidget(card)
     outer.addStretch(1)
 
+    def on_browse():
+        folder = QFileDialog.getExistingDirectory(root, "Select Project Folder")
+        if folder:
+            title_input.setText(folder)
+
     def on_create():
-        title = title_input.text().strip()
+        project_path = title_input.text().strip()
         desc = desc_input.toPlainText().strip()
         missing = []
-        if not title:
-            missing.append("project title")
+        if not project_path:
+            missing.append("project path")
         if not desc:
             missing.append("project description")
         if missing:
             hint_label.setText("Please provide " + " and ".join(missing) + ".")
             return
-        hint_label.setText("")
-        FileMng.add_folder(title)
-        hint_label.setText(f"Project folder created: {title}")
+        hint_label.setText("Generating flowchart...")
+        loading = LoadingScreen(root, message="Generating your flowchart. Please wait...")
+        loading.show()
+        root.repaint()
+        try:
+            ai_data = generate_flowchart_from_description(desc, project_path)
+            framework = ai_data.get("framework", "")
+            project_root = os.path.abspath(project_path)
 
+            my_flowchart = Flowchart(name=os.path.basename(project_root), framework=framework, project_path=project_root)
+            my_flowchart.create_from_ai_response(ai_data)
+            
+            my_flowchart.save_to_file()
+
+            flowchart_id = my_flowchart.flowchart_id
+            
+            FileMng.save_project(flowchart_id, project_root)
+            save_current_project_id(flowchart_id)
+
+            
+        except Exception as exc:
+            hint_label.setText(f"Failed to generate flowchart: {exc}")
+        finally:
+            loading.close()
+
+    browse_button.clicked.connect(on_browse)
     create_button.clicked.connect(on_create)
 
     return root

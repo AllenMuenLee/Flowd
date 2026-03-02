@@ -18,28 +18,33 @@ client = OpenAI(
 )
 
 class CodingAgent:
-    def __init__(self, project_name):
-        project_path = Path(project_name + '/' + project_name)
-        project_path.mkdir(parents=True, exist_ok=True)
-
+    def __init__(self, project_path):
         self.ast_map = {}
-        self.project_name = project_name
+        self.project_root = str(project_root)
+        self.project_name = project_root.name
         if not self._load_ast_map():
-            self.ast_map = SymbolExt.initialize_ast_map(self.project_name, self.ast_map)
+            self.ast_map = SymbolExt.initialize_ast_map(self.project_root, self.ast_map)
             self._save_ast_map()
 
+    def _to_abs_path(self, path_value):
+        if not path_value:
+            return path_value
+        if os.path.isabs(path_value):
+            return os.path.normpath(path_value)
+        return os.path.normpath(os.path.join(self.project_root, path_value))
+
     def _save_ast_map(self):
-        ast_map_path = self.project_name + "/ast_map.json"
-        normalized = {os.path.normpath(k): v for k, v in self.ast_map.items()}
+        ast_map_path = os.path.join(self.project_root, "ast_map.json")
+        normalized = {os.path.abspath(k): v for k, v in self.ast_map.items()}
         FileMng.save_json(normalized, ast_map_path)
 
     def _load_ast_map(self):
-        ast_map_path = self.project_name + "/ast_map.json"
+        ast_map_path = os.path.join(self.project_root, "ast_map.json")
         if not os.path.exists(ast_map_path):
             return False
         try:
             raw_map = FileMng.load_json(ast_map_path)
-            self.ast_map = {os.path.normpath(k): v for k, v in raw_map.items()}
+            self.ast_map = {os.path.abspath(k): v for k, v in raw_map.items()}
             return True
         except Exception:
             return False
@@ -48,7 +53,7 @@ class CodingAgent:
         file_set = {}
 
         for c in step['command']:
-            output = Terminal.run_command(c, cwd=self.project_name + '/' + self.project_name)
+            output = Terminal.run_command(c, cwd=self.project_root)
             if output:
                 print(output, end="")
 
@@ -56,14 +61,14 @@ class CodingAgent:
             return ""
 
         for f in step['filenames']:
-            norm_f = os.path.normpath(f)
+            norm_f = self._to_abs_path(f)
             if norm_f in self.ast_map:
                 file_set[norm_f] = self.ast_map[norm_f]
             else:
                 file_set[norm_f] = SymbolExt.get_ast_map("", file_path=norm_f)
 
         for f in step['files_to_import']:
-            norm_f = os.path.normpath(f)
+            norm_f = self._to_abs_path(f)
             if norm_f in self.ast_map:
                 file_set[norm_f] = self.ast_map[norm_f]
             else:
@@ -178,15 +183,15 @@ class CodingAgent:
         
         extracted_data = {}
         for filename, code in matches:
-            norm_filename = os.path.normpath(filename)
-            norm_filename = Path(norm_filename)
+            abs_filename = self._to_abs_path(filename)
+            norm_filename = Path(abs_filename)
             norm_filename.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(filename, "a", encoding="utf-8") as f:
+            with open(abs_filename, "a", encoding="utf-8") as f:
                 f.write(code)
                 f.write("\n\n")  # Add spacing between code blocks if multiple are added to the same file
 
-            with open(filename, "r", encoding="utf-8") as f:
+            with open(abs_filename, "r", encoding="utf-8") as f:
                 full_code = f.read()
 
             self.ast_map[norm_filename] = SymbolExt.get_ast_map(
@@ -195,8 +200,8 @@ class CodingAgent:
             self._save_ast_map()
 
 if __name__ == "__main__":
-    project_name = "project_1"
-    agent = CodingAgent(project_name)
-    filepath = project_name + "/flowchart.json"
+    project_path = os.path.abspath("project_1")
+    agent = CodingAgent(project_path)
+    filepath = os.path.join(project_path, "flowchart.json")
     procedure = FileMng.get_procedure(filepath)
     agent.generate(procedure, procedure["steps"][procedure["start_id"]])
