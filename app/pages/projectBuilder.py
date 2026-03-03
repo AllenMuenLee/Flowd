@@ -22,7 +22,7 @@ from src.utils import FileMng
 from src.core.ai_helper import generate_flowchart_from_description
 from src.core.Flowchart import Flowchart
 from src.utils.CacheMng import save_current_project_id
-from src.pages.loadingScreen import LoadingScreen
+from app.pages.loadingScreen import LoadingScreen
 
 def _apply_theme(widget: QWidget) -> None:
     style_path = Path(__file__).resolve().parents[1] / "style" / "project_builder.qss"

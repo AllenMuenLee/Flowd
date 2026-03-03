@@ -2,8 +2,8 @@ import sys
 
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
 
-from src.pages.projectBuilder import ProjectBuilderWidget
-from src.pages.canva import CanvaWidget
+from app.pages.projectBuilder import ProjectBuilderWidget
+from app.pages.canva import CanvaWidget
 
 
 def main():
