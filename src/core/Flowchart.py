@@ -93,7 +93,7 @@ class Flowchart:
         
         return flowchart
     
-    def save_to_file(self, project_id):
+    def save_to_file(self, project_id, flowchart_dict):
         """Save flowchart to JSON file."""
         
         # Convert flowchart to dictionary
@@ -104,8 +104,6 @@ class Flowchart:
         # Open file and write JSON
         with open(project_path, 'w') as file:
             json.dump(flowchart_dict, file, indent=2)
-        
-        print(f"Flowchart saved to {filename}")
     
     def load_from_file(self, project_id):
         """Load flowchart from JSON file."""
@@ -121,7 +119,7 @@ class Flowchart:
         # Convert dictionary back to Flowchart object
         flowchart = self.dictionary_to_flowchart(flowchart_dict)
         
-        print(f"Flowchart loaded from {filename}")
+        #print(f"Flowchart loaded from {filename}")
         return flowchart
 
 

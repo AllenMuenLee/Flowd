@@ -30,10 +30,11 @@ def _apply_theme(widget: QWidget) -> None:
         widget.setStyleSheet(style_path.read_text(encoding="utf-8"))
 
 
-def build_project_builder() -> QWidget:
+def build_project_builder(on_project_created=None) -> QWidget:
     root = QWidget()
     root.setObjectName("ProjectBuilderRoot")
     _apply_theme(root)
+    root._on_project_created = on_project_created
 
     app_font = QFont("Inter", 10)
     if app_font.family() == "Inter":
@@ -136,15 +137,20 @@ def build_project_builder() -> QWidget:
             my_flowchart = Flowchart(name=os.path.basename(project_root), framework=framework, project_path=project_root)
             my_flowchart.create_from_ai_response(ai_data)
 
+            flowchart_dict = my_flowchart.flowchart_to_dictionary()
+
             flowchart_id = my_flowchart.flowchart_id
             
-            my_flowchart.save_to_file(flowchart_id)
+            my_flowchart.save_to_file(flowchart_id, flowchart_dict)
             FileMng.save_project(flowchart_id, project_root)
             save_current_project_id(flowchart_id)
-
+            if root._on_project_created:
+                root._on_project_created(True)
             
         except Exception as exc:
             hint_label.setText(f"Failed to generate flowchart: {exc}")
+            if root._on_project_created:
+                root._on_project_created(False)
         finally:
             loading.close()
 
@@ -155,8 +161,8 @@ def build_project_builder() -> QWidget:
 
 
 class ProjectBuilderWidget(QWidget):
-    def __init__(self):
+    def __init__(self, on_project_created=None):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(build_project_builder())
+        layout.addWidget(build_project_builder(on_project_created=on_project_created))
