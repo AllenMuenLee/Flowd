@@ -22,7 +22,9 @@ def generate_flowchart_from_description(task_description, project_name):
     # Create OpenAI client pointing to Nova
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.nova.amazon.com/v1"
+        base_url="https://api.nova.amazon.com/v1",
+        default_headers={"Accept-Encoding": "gzip, deflate"},  # Disable zstd
+        timeout=90.0
     )
     
     # Create the prompt for Nova

@@ -1,38 +1,42 @@
-from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtWidgets import QLabel
-
+from PyQt6.QtCore import Qt
 
 class DraggableBlock(QLabel):
-    def __init__(self, text, parent=None):
-        super().__init__(text, parent)
+    def __init__(self, step_id, step_data, parent=None):
+        super().__init__(step_id, parent)
+        self.step_id = step_id
+        self.step_data = step_data
         self.setObjectName("DraggableBlock")
-        self.setFixedSize(180, 48)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet(
-            """
-            QLabel#DraggableBlock {
-                background: #111827;
+        self.setFixedSize(150, 80)
+        self.setStyleSheet("""
+            QLabel {
+                background: #1e293b;
                 color: #e2e8f0;
-                border: 1px solid #1f2937;
+                border: 2px solid #334155;
                 border-radius: 10px;
-                font-size: 12px;
+                padding: 15px;
+                font-size: 13px;
                 font-weight: 600;
             }
-            """
-        )
-        self._drag_offset = QPoint()
-
+        """)
+        self._drag_offset = None
+    
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_offset = event.position().toPoint()
-            self.raise_()
         super().mousePressEvent(event)
-
+    
     def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.MouseButton.LeftButton:
-            parent = self.parentWidget()
-            if not parent:
-                return
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_offset:
             new_pos = self.mapToParent(event.position().toPoint() - self._drag_offset)
             self.move(new_pos)
+            
+            # Update connection lines if parent has them
+            if self.parent():
+                from app.components.ConnectionLine import ConnectionLine
+                for child in self.parent().children():
+                    if isinstance(child, ConnectionLine):
+                        child.update_position()
+        
         super().mouseMoveEvent(event)

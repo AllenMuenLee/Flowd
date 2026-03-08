@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QMessageBox,
     QFileDialog,
+    QApplication,
 )
 
 from src.utils import FileMng
@@ -25,7 +26,7 @@ from src.utils.CacheMng import save_current_project_id
 from app.pages.loadingScreen import LoadingScreen
 
 def _apply_theme(widget: QWidget) -> None:
-    style_path = Path(__file__).resolve().parents[1] / "style" / "project_builder.qss"
+    style_path = Path(__file__).resolve().parent.parent / "style" / "project_builder.qss"
     if style_path.exists():
         widget.setStyleSheet(style_path.read_text(encoding="utf-8"))
 
@@ -117,37 +118,49 @@ def build_project_builder(on_project_created=None) -> QWidget:
     def on_create():
         project_path = title_input.text().strip()
         desc = desc_input.toPlainText().strip()
+
         missing = []
         if not project_path:
             missing.append("project path")
         if not desc:
             missing.append("project description")
+
         if missing:
             hint_label.setText("Please provide " + " and ".join(missing) + ".")
             return
+
         hint_label.setText("Generating flowchart...")
         loading = LoadingScreen(root, message="Generating your flowchart. Please wait...")
         loading.show()
+        QApplication.processEvents()
         root.repaint()
+
         try:
             ai_data = generate_flowchart_from_description(desc, project_path)
             framework = ai_data.get("framework", "")
             project_root = os.path.abspath(project_path)
-
-            my_flowchart = Flowchart(name=os.path.basename(project_root), framework=framework, project_path=project_root)
+            
+            # FIX: Use project_root= instead of project_path=
+            my_flowchart = Flowchart(
+                name=os.path.basename(project_root),
+                framework=framework,
+                project_root=project_root  # ✅ Changed from project_path
+            )
+            
             my_flowchart.create_from_ai_response(ai_data)
-
             flowchart_dict = my_flowchart.flowchart_to_dictionary()
-
             flowchart_id = my_flowchart.flowchart_id
             
             my_flowchart.save_to_file(flowchart_id, flowchart_dict)
             FileMng.save_project(flowchart_id, project_root)
             save_current_project_id(flowchart_id)
+
             if root._on_project_created:
                 root._on_project_created(True)
             
         except Exception as exc:
+            import traceback
+            traceback.print_exc()  # Print full error for debugging
             hint_label.setText(f"Failed to generate flowchart: {exc}")
             if root._on_project_created:
                 root._on_project_created(False)
