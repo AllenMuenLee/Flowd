@@ -566,7 +566,7 @@ class CodeGenerationWorker(QThread):
             start_step = flowchart.get_start()
             start_step_dict = start_step.step_to_dictionary()
             
-            agent.generate(self.flowchart_dict, start_step_dict, progress=self._report_progress)
+            agent.generate_project(self.flowchart_dict, progress=self._report_progress)
             
             self.finished.emit(True, "Code generated successfully!")
         except Exception as e:
@@ -692,7 +692,12 @@ def on_generate_code(root):
 def update_generate_button(root):
     if not hasattr(root, "generate_btn") or not root.generate_btn:
         return
-    if root.code_generated and root.code_editor_engine and root.code_editor_engine.has_changes():
+    has_changes = bool(root.code_editor_engine and root.code_editor_engine.has_changes())
+    if root.code_generated and not has_changes:
+        root.generate_btn.setVisible(False)
+    else:
+        root.generate_btn.setVisible(True)
+    if root.code_generated and has_changes:
         root.generate_btn.setText("Apply Edits")
         root.generate_btn.setToolTip("Generate edits from changes")
     else:

@@ -48,15 +48,25 @@ def run_command_async(
     on_error: Optional[Callable[[Exception], None]] = None,
 ) -> threading.Thread:
     def _runner():
+        output_seen = False
         try:
-            output = run_command(command, cwd=cwd, timeout=timeout)
-            if output:
-                if on_output_line:
-                    for line in output.splitlines():
-                        on_output_line(line)
-            else:
-                if on_no_output:
-                    on_no_output()
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            if process.stdout:
+                for line in process.stdout:
+                    output_seen = True
+                    if on_output_line:
+                        on_output_line(line.rstrip("\n"))
+            process.wait(timeout=timeout)
+            if not output_seen and on_no_output:
+                on_no_output()
             if on_complete:
                 on_complete()
         except Exception as exc:

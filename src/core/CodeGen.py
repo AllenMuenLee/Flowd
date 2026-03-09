@@ -25,6 +25,7 @@ class CodingAgent:
         self.ast_map = {}
         self.project_root = str(project_path)  # ✅ Use project_path parameter
         self.project_name = Path(project_path).name  # ✅ Use project_path parameter
+        self.stack = []
         
         if not self._load_ast_map():
             self.ast_map = SymbolExt.initialize_ast_map(self.project_root, self.ast_map)
@@ -190,9 +191,16 @@ class CodingAgent:
         
         # Process children
         for c in step["children"]:
-            self.generate(procedure, procedure["steps"][c], progress=progress)
-        
-        return None
+            self.stack.append([procedure["steps"][c], progress])
+
+        return
+
+    def generate_project(self, procedure, progress=None):
+        self.stack.append([procedure["steps"][procedure["start_id"]], progress])
+
+        while(len(self.stack)):
+            self.generate(procedure, self.stack[0][0], progress=self.stack[0][1])
+            self.stack.pop(0)
 
     def save_and_update(self, text):
         pattern = r"\[([^\]]+)\]:?\s*```(?:[a-zA-Z0-9_+-]*)\n(.*?)\n```"
@@ -231,11 +239,3 @@ class CodingAgent:
                 full_code, file_path=str(norm_filename)
             )
             self._save_ast_map()
-
-
-if __name__ == "__main__":
-    project_path = os.path.abspath("project_1")
-    agent = CodingAgent(project_path)
-    filepath = os.path.join(project_path, "flowchart.json")
-    procedure = FileMng.get_procedure(filepath)
-    agent.generate(procedure, procedure["steps"][procedure["start_id"]])

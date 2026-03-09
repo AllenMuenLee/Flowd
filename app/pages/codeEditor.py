@@ -1,6 +1,16 @@
 import os
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QInputDialog, QApplication
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence, QShortcut, QColor
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.Qsci import (
+    QsciLexerPython,
+    QsciLexerJavaScript,
+    QsciLexerHTML,
+    QsciLexerCSS,
+    QsciLexerJSON,
+    QsciLexerMarkdown,
+    QsciLexerCPP,
+)
 import src.utils.Terminal as Terminal
 from app.components.code_editor.chatbot_widget import ChatbotWidget
 from app.components.code_editor.toolbar import build_toolbar
@@ -30,11 +40,20 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     )
     main_layout.addWidget(toolbar)
 
-    content_splitter, file_tree, file_model, code_editor, current_file_label, add_btn, delete_btn = build_content_splitter(
+    (
+        content_splitter,
+        file_tree,
+        file_model,
+        code_editor,
+        current_file_label,
+        find_bar,
+        find_input,
+        find_prev_btn,
+        find_next_btn,
+        find_case,
+    ) = build_content_splitter(
         on_file_clicked=lambda filename: load_file(root, filename),
         on_save=lambda: save_file(root),
-        on_add_file=lambda: on_add_file(root),
-        on_delete_file=lambda: on_delete_file(root),
     )
     main_layout.addWidget(content_splitter, stretch=3)
 
@@ -48,8 +67,12 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     root.file_model = file_model
     root.code_editor = code_editor
     root.current_file_label = current_file_label
-    root.file_add_btn = add_btn
-    root.file_delete_btn = delete_btn
+    root.find_bar = find_bar
+    root.find_input = find_input
+    root.find_prev_btn = find_prev_btn
+    root.find_next_btn = find_next_btn
+    root.find_case = find_case
+    root.code_lexer = None
     root.terminal = terminal
     root.terminal_input = terminal_input
     root.stop_process_btn = stop_process_btn
@@ -61,12 +84,14 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     # Shared terminal module runs commands to completion; no process tracking here.
 
     terminal_input.returnPressed.connect(lambda: execute_terminal_command(root))
-    root.file_tree.selectionModel().currentChanged.connect(
-        lambda current, previous: file_panel_actions.update_file_actions(
-            root.file_delete_btn, root.file_model, current
-        )
-    )
+    root.find_input.returnPressed.connect(lambda: find_next(root))
+    root.find_next_btn.clicked.connect(lambda: find_next(root))
+    root.find_prev_btn.clicked.connect(lambda: find_prev(root))
+    root.find_case.stateChanged.connect(lambda _: find_next(root, restart=True))
 
+    find_shortcut = QShortcut(QKeySequence.StandardKey.Find, root)
+    find_shortcut.activated.connect(lambda: _focus_find(root))
+    root.find_shortcut = find_shortcut
     apply_code_editor_theme(root)
 
     if flowchart_data:
@@ -85,42 +110,210 @@ def execute_terminal_command(root):
     # Clear input
     root.terminal_input.clear()
     
-    # Show command in terminal
-    root.terminal.append(f"$ {command}")
-    
     # Get project root
     project_root = ""
     if root.flowchart_data:
         project_root = root.flowchart_data.get('project_root', '')
-    
-    # Check if this is a long-running command (like python app.py, npm start, etc.)
-    if Terminal.is_long_running_command(command) and not command.endswith('--help') and not command.endswith('--version'):
-        root.terminal.append(
-            f"⚠️  This looks like a long-running command (web server, etc.).\n"
-            f"   The built-in terminal runs to completion and cannot be stopped.\n"
-        )
 
     def on_line(line: str):
-        root.terminal.append(line)
-        QApplication.processEvents()
-
-    def on_no_output():
-        root.terminal.append("✓ Process completed with no output")
-
-    def on_complete():
-        root.terminal.append("\n$ Process finished\n")
-
-    def on_error(exc: Exception):
-        root.terminal.append(f"Error: {exc}\n")
+        QTimer.singleShot(0, lambda l=line: root.terminal.append(l))
 
     Terminal.run_command_async(
         command,
         cwd=project_root if project_root else None,
         on_output_line=on_line,
-        on_no_output=on_no_output,
-        on_complete=on_complete,
-        on_error=on_error,
     )
+
+
+def _focus_find(root):
+    if root.find_bar:
+        root.find_bar.setVisible(True)
+    if root.find_input:
+        root.find_input.setFocus()
+        root.find_input.selectAll()
+
+
+def _set_editor_lexer(root, filename: str):
+    if not root.code_editor:
+        return
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower().lstrip(".")
+
+    lexer = None
+    if ext == "py":
+        lexer = QsciLexerPython(root.code_editor)
+    elif ext in ("js", "jsx", "ts", "tsx"):
+        lexer = QsciLexerJavaScript(root.code_editor)
+    elif ext in ("html", "htm"):
+        lexer = QsciLexerHTML(root.code_editor)
+    elif ext in ("css", "scss"):
+        lexer = QsciLexerCSS(root.code_editor)
+    elif ext == "json":
+        lexer = QsciLexerJSON(root.code_editor)
+    elif ext in ("md", "markdown"):
+        lexer = QsciLexerMarkdown(root.code_editor)
+    elif ext in ("c", "cpp", "h", "hpp"):
+        lexer = QsciLexerCPP(root.code_editor)
+
+    root.code_editor.setLexer(lexer)
+    root.code_lexer = lexer
+    _apply_editor_theme(root)
+    _apply_lexer_theme(root, lexer)
+
+
+def _apply_editor_theme(root):
+    if not root.code_editor:
+        return
+    root.code_editor.setPaper(QColor("#15141b"))
+    root.code_editor.setColor(QColor("#edecee"))
+    root.code_editor.setCaretForegroundColor(QColor("#a277ff"))
+    root.code_editor.setCaretLineVisible(True)
+    root.code_editor.setCaretLineBackgroundColor(QColor("#312d45"))
+    root.code_editor.setSelectionBackgroundColor(QColor("#6b657a"))
+    root.code_editor.setSelectionForegroundColor(QColor("#ffffff"))
+    root.code_editor.setMarginsForegroundColor(QColor("#edecee"))
+    root.code_editor.setMarginsBackgroundColor(QColor("#15141b"))
+
+
+def _apply_lexer_theme(root, lexer):
+    if not lexer:
+        return
+    font = root.code_editor.font()
+    lexer.setDefaultFont(font)
+    lexer.setDefaultPaper(QColor("#15141b"))
+    lexer.setDefaultColor(QColor("#edecee"))
+    try:
+        for style in range(128):
+            lexer.setPaper(QColor("#15141b"), style)
+            lexer.setColor(QColor("#edecee"), style)
+            lexer.setFont(font, style)
+    except Exception:
+        print("error")
+
+    def _set_style(style_attr: str, color: str):
+        style = getattr(lexer, style_attr, None)
+        if style is not None:
+            try:
+                lexer.setColor(QColor(color), style)
+            except Exception:
+                pass
+
+    if isinstance(lexer, QsciLexerPython):
+        _set_style("Comment", "#6d6d6d")
+        _set_style("CommentBlock", "#6d6d6d")
+        _set_style("Number", "#ffca85")
+        _set_style("Keyword", "#a277ff")
+        _set_style("ClassName", "#82e2ff")
+        _set_style("FunctionMethodName", "#82e2ff")
+        _set_style("SingleQuotedString", "#61ffca")
+        _set_style("DoubleQuotedString", "#61ffca")
+        _set_style("TripleSingleQuotedString", "#61ffca")
+        _set_style("TripleDoubleQuotedString", "#61ffca")
+        _set_style("Decorator", "#a277ff")
+        _set_style("Operator", "#edecee")
+    elif isinstance(lexer, QsciLexerJavaScript):
+        _set_style("Comment", "#6d6d6d")
+        _set_style("CommentLine", "#6d6d6d")
+        _set_style("CommentDoc", "#6d6d6d")
+        _set_style("Number", "#ffca85")
+        _set_style("Keyword", "#a277ff")
+        _set_style("KeywordSet2", "#a277ff")
+        _set_style("ClassName", "#82e2ff")
+        _set_style("DoubleQuotedString", "#61ffca")
+        _set_style("SingleQuotedString", "#61ffca")
+        _set_style("TemplateLiteral", "#61ffca")
+        _set_style("Operator", "#edecee")
+    elif isinstance(lexer, QsciLexerHTML):
+        _set_style("HTMLComment", "#6d6d6d")
+        _set_style("HTMLDoubleQuotedString", "#61ffca")
+        _set_style("HTMLSingleQuotedString", "#61ffca")
+        _set_style("Tag", "#a277ff")
+        _set_style("TagEnd", "#a277ff")
+        _set_style("Attribute", "#82e2ff")
+    elif isinstance(lexer, QsciLexerCSS):
+        _set_style("Comment", "#6d6d6d")
+        _set_style("Tag", "#a277ff")
+        _set_style("ClassSelector", "#82e2ff")
+        _set_style("IDSelector", "#82e2ff")
+        _set_style("PseudoClass", "#a277ff")
+        _set_style("Attribute", "#82e2ff")
+        _set_style("Number", "#ffca85")
+        _set_style("DoubleQuotedString", "#61ffca")
+        _set_style("SingleQuotedString", "#61ffca")
+        _set_style("Operator", "#edecee")
+    elif isinstance(lexer, QsciLexerJSON):
+        _set_style("Property", "#82e2ff")
+        _set_style("String", "#61ffca")
+        _set_style("Number", "#ffca85")
+        _set_style("Operator", "#edecee")
+    elif isinstance(lexer, QsciLexerMarkdown):
+        _set_style("Header1", "#a277ff")
+        _set_style("Header2", "#a277ff")
+        _set_style("Header3", "#a277ff")
+        _set_style("CodeBlock", "#61ffca")
+        _set_style("InlineCode", "#61ffca")
+        _set_style("Emphasis", "#82e2ff")
+        _set_style("StrongEmphasis", "#82e2ff")
+    elif isinstance(lexer, QsciLexerCPP):
+        _set_style("Comment", "#6d6d6d")
+        _set_style("CommentLine", "#6d6d6d")
+        _set_style("Number", "#ffca85")
+        _set_style("Keyword", "#a277ff")
+        _set_style("String", "#61ffca")
+        _set_style("Character", "#61ffca")
+        _set_style("Operator", "#edecee")
+
+
+def _find_in_editor(root, forward: bool, restart: bool = False):
+    text = root.find_input.text() if root.find_input else ""
+    if not text:
+        return
+
+    case_sensitive = bool(root.find_case and root.find_case.isChecked())
+    whole_word = False
+    regex = False
+    wrap = True
+    show = True
+
+    if restart:
+        start_line = 0 if forward else root.code_editor.lines() - 1
+        start_index = 0
+    else:
+        start_line, start_index = root.code_editor.getCursorPosition()
+
+    found = root.code_editor.findFirst(
+        text,
+        regex,
+        case_sensitive,
+        whole_word,
+        wrap,
+        forward,
+        start_line,
+        start_index,
+        show,
+    )
+    if not found and wrap:
+        start_line = 0 if forward else root.code_editor.lines() - 1
+        start_index = 0
+        root.code_editor.findFirst(
+            text,
+            regex,
+            case_sensitive,
+            whole_word,
+            wrap,
+            forward,
+            start_line,
+            start_index,
+            show,
+        )
+
+
+def find_next(root, restart: bool = False):
+    _find_in_editor(root, True, restart)
+
+
+def find_prev(root):
+    _find_in_editor(root, False, False)
 
 
 def load_file(root, filename):
@@ -139,43 +332,12 @@ def load_file(root, filename):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
-        root.code_editor.setPlainText(content)
+        root.code_editor.setText(content)
+        _set_editor_lexer(root, filename)
         root.current_file_label.setText(f"Editing: {filename}")
         root.current_file = file_path
-        root.terminal.append(f"$ Opened {filename}")
-        
     except Exception as e:
         QMessageBox.critical(root, "Error", f"Failed to load file: {e}")
-        root.terminal.append(f"✗ Error loading {filename}: {e}")
-
-
-def on_add_file(root):
-    if not root.flowchart_data:
-        QMessageBox.warning(root, "Error", "No project loaded!")
-        return
-
-    project_root = root.flowchart_data.get('project_root', '')
-    ok, message, filename = file_panel_actions.add_file(root, project_root)
-    if ok and filename:
-        root.terminal.append(f"$ Created {filename}")
-    elif message and message != "Cancelled.":
-        QMessageBox.warning(root, "Error", message)
-
-
-def on_delete_file(root):
-    if not root.flowchart_data:
-        QMessageBox.warning(root, "Error", "No project loaded!")
-        return
-
-    project_root = root.flowchart_data.get('project_root', '')
-    ok, message = file_panel_actions.delete_file(
-        root, project_root, root.file_tree, root.file_model
-    )
-    if ok:
-        root.terminal.append("$ Deleted file")
-    elif message and message != "Cancelled.":
-        QMessageBox.warning(root, "Error", message)
 
 
 def save_file(root):
@@ -186,18 +348,16 @@ def save_file(root):
         return
     
     try:
-        content = root.code_editor.toPlainText()
+        content = root.code_editor.text()
         
         with open(root.current_file, 'w', encoding='utf-8') as f:
             f.write(content)
         
         filename = os.path.basename(root.current_file)
-        root.terminal.append(f"✓ Saved {filename}")
         QMessageBox.information(root, "Success", f"File saved: {filename}")
         
     except Exception as e:
         QMessageBox.critical(root, "Error", f"Failed to save file: {e}")
-        root.terminal.append(f"✗ Error saving file: {e}")
 
 
 def on_run_project(root):
@@ -226,9 +386,6 @@ def on_run_project(root):
         QMessageBox.warning(root, "Error", f"File not found: {main_file}")
         return
     
-    root.terminal.append(f"\n$ Running {main_file}...\n")
-    QApplication.processEvents()
-    
     try:
         # Determine how to run the file based on extension
         if main_file.endswith('.py'):
@@ -239,20 +396,21 @@ def on_run_project(root):
             QMessageBox.warning(root, "Error", "Unsupported file type!")
             return
         
-        # Run command
-        output = Terminal.run_command(command, cwd=project_root, timeout=30)
+        # Show command in input (no custom terminal output)
+        if root.terminal_input:
+            root.terminal_input.setText(command)
+
+        def on_line(line: str):
+            QTimer.singleShot(0, lambda l=line: root.terminal.append(l))
+
+        Terminal.run_command_async(
+            command,
+            cwd=project_root,
+            on_output_line=on_line,
+        )
         
-        # Display output
-        if output:
-            root.terminal.append(output)
-        else:
-            root.terminal.append("✓ Process completed with no output")
-        
-        root.terminal.append("\n$ Process finished\n")
-        
-    except Exception as e:
-        error_msg = str(e)
-        root.terminal.append(f"\n✗ Error: {error_msg}\n")
+    except Exception:
+        pass
 
 def toggle_chatbot(root, show):
     """Toggle chatbot sidebar."""
@@ -308,4 +466,11 @@ class CodeEditorWidget(QWidget):
                 pass
         
         super().closeEvent(event)
+
+
+
+
+
+
+
 

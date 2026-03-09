@@ -37,7 +37,7 @@ def generate_flowchart_from_description(task_description, project_name):
         "framework": "Any framework that's applicable",
         "steps": [
             {{
-                "id": "step1",
+                "id": "initialize",
                 "type": "start",
                 "description": "Start the process",
                 "filenames": [],
@@ -46,7 +46,7 @@ def generate_flowchart_from_description(task_description, project_name):
                 "next": ["step2", "step3]
             }},
             {{
-                "id": "step2",
+                "id": "do something",
                 "type": "process",
                 "description": "Do something",
                 "filenames": ["library.extension"],
@@ -55,7 +55,7 @@ def generate_flowchart_from_description(task_description, project_name):
                 "next": ["step4"]
             }},
             {{
-                "id": "step3",
+                "id": "add example",
                 "type": "process",
                 "description": "Do something",
                 "filenames": ["example.extension"],
@@ -64,7 +64,7 @@ def generate_flowchart_from_description(task_description, project_name):
                 "next": ["step4"]
             }},
             {{
-                "id": "step4",
+                "id": "integrate project",
                 "type": "end",
                 "description": "End the process",
                 "filenames": [],
