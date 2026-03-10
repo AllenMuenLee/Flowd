@@ -1,7 +1,7 @@
 import os
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QInputDialog, QApplication
-from PyQt6.QtGui import QKeySequence, QShortcut, QColor
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QKeySequence, QShortcut, QColor, QTextCursor
+from PyQt6.QtCore import Qt, QProcess
 from PyQt6.Qsci import (
     QsciLexerPython,
     QsciLexerJavaScript,
@@ -15,6 +15,7 @@ import src.utils.Terminal as Terminal
 from app.components.code_editor.chatbot_widget import ChatbotWidget
 from app.components.code_editor.toolbar import build_toolbar
 from app.components.code_editor.content_splitter import build_content_splitter
+from app.components.code_editor.editor_panel import apply_editor_theme
 from app.components.code_editor import file_panel as file_panel_actions
 from app.components.code_editor.terminal_panel import build_terminal_panel
 from app.components.code_editor.page_theme import apply_code_editor_theme
@@ -57,7 +58,14 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     )
     main_layout.addWidget(content_splitter, stretch=3)
 
-    terminal_container, terminal, terminal_input, stop_process_btn = build_terminal_panel(
+    (
+        terminal_container,
+        terminal,
+        terminal_input,
+        terminal_run_btn,
+        stop_process_btn,
+        terminal_clear_btn,
+    ) = build_terminal_panel(
         on_run_command=lambda: execute_terminal_command(root)
     )
     main_layout.addWidget(terminal_container, stretch=1)
@@ -75,7 +83,10 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     root.code_lexer = None
     root.terminal = terminal
     root.terminal_input = terminal_input
+    root.terminal_run_btn = terminal_run_btn
+    root.terminal_clear_btn = terminal_clear_btn
     root.stop_process_btn = stop_process_btn
+    root.terminal_process = None
     root.content_splitter = content_splitter
     root.flowchart_data = flowchart_data
     root.current_file = None
@@ -84,6 +95,7 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     # Shared terminal module runs commands to completion; no process tracking here.
 
     terminal_input.returnPressed.connect(lambda: execute_terminal_command(root))
+    root.stop_process_btn.clicked.connect(lambda: _stop_terminal_process(root))
     root.find_input.returnPressed.connect(lambda: find_next(root))
     root.find_next_btn.clicked.connect(lambda: find_next(root))
     root.find_prev_btn.clicked.connect(lambda: find_prev(root))
@@ -93,6 +105,7 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     find_shortcut.activated.connect(lambda: _focus_find(root))
     root.find_shortcut = find_shortcut
     apply_code_editor_theme(root)
+    apply_editor_theme(root.code_editor)
 
     if flowchart_data:
         project_root = flowchart_data.get('project_root', '')
@@ -103,6 +116,8 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
 def execute_terminal_command(root):
     """Execute command typed in terminal input."""
     command = root.terminal_input.text().strip()
+
+    print(command)
     
     if not command:
         return
@@ -115,14 +130,8 @@ def execute_terminal_command(root):
     if root.flowchart_data:
         project_root = root.flowchart_data.get('project_root', '')
 
-    def on_line(line: str):
-        QTimer.singleShot(0, lambda l=line: root.terminal.append(l))
-
-    Terminal.run_command_async(
-        command,
-        cwd=project_root if project_root else None,
-        on_output_line=on_line,
-    )
+    _run_in_terminal(root, command, project_root if project_root else None)
+    root.terminal_input.clear()
 
 
 def _focus_find(root):
@@ -157,35 +166,23 @@ def _set_editor_lexer(root, filename: str):
 
     root.code_editor.setLexer(lexer)
     root.code_lexer = lexer
-    _apply_editor_theme(root)
+    
+    apply_editor_theme(root.code_editor)
     _apply_lexer_theme(root, lexer)
 
 
-def _apply_editor_theme(root):
-    if not root.code_editor:
-        return
-    root.code_editor.setPaper(QColor("#15141b"))
-    root.code_editor.setColor(QColor("#edecee"))
-    root.code_editor.setCaretForegroundColor(QColor("#a277ff"))
-    root.code_editor.setCaretLineVisible(True)
-    root.code_editor.setCaretLineBackgroundColor(QColor("#312d45"))
-    root.code_editor.setSelectionBackgroundColor(QColor("#6b657a"))
-    root.code_editor.setSelectionForegroundColor(QColor("#ffffff"))
-    root.code_editor.setMarginsForegroundColor(QColor("#edecee"))
-    root.code_editor.setMarginsBackgroundColor(QColor("#15141b"))
-
-
 def _apply_lexer_theme(root, lexer):
+    print("apply lexer")
     if not lexer:
         return
-    font = root.code_editor.font()
+    font = getattr(root, "code_editor_font", None) or root.code_editor.font()
     lexer.setDefaultFont(font)
-    lexer.setDefaultPaper(QColor("#15141b"))
-    lexer.setDefaultColor(QColor("#edecee"))
+    lexer.setDefaultPaper(QColor("#10141c"))
+    lexer.setDefaultColor(QColor("#e7e9ee"))
     try:
         for style in range(128):
-            lexer.setPaper(QColor("#15141b"), style)
-            lexer.setColor(QColor("#edecee"), style)
+            lexer.setPaper(QColor("#10141c"), style)
+            lexer.setColor(QColor("#e7e9ee"), style)
             lexer.setFont(font, style)
     except Exception:
         print("error")
@@ -262,6 +259,7 @@ def _apply_lexer_theme(root, lexer):
         _set_style("String", "#61ffca")
         _set_style("Character", "#61ffca")
         _set_style("Operator", "#edecee")
+    # Re-assert editor metrics in case the lexer mutated them.
 
 
 def _find_in_editor(root, forward: bool, restart: bool = False):
@@ -400,14 +398,7 @@ def on_run_project(root):
         if root.terminal_input:
             root.terminal_input.setText(command)
 
-        def on_line(line: str):
-            QTimer.singleShot(0, lambda l=line: root.terminal.append(l))
-
-        Terminal.run_command_async(
-            command,
-            cwd=project_root,
-            on_output_line=on_line,
-        )
+        _run_in_terminal(root, command, project_root)
         
     except Exception:
         pass
@@ -431,6 +422,57 @@ def toggle_chatbot(root, show):
         # Hide chatbot
         if root.chatbot_widget:
             root.chatbot_widget.hide()
+
+
+def _run_in_terminal(root, command: str, cwd: str | None):
+    if not command:
+        return
+    # Prevent overlapping runs.
+    if hasattr(root, "terminal_process") and root.terminal_process:
+        if root.terminal_process.state() != QProcess.ProcessState.NotRunning:
+            return
+
+    def append_output(text: str):
+        if text:
+            root.terminal.moveCursor(QTextCursor.MoveOperation.End)
+            root.terminal.insertPlainText(text)
+            root.terminal.moveCursor(QTextCursor.MoveOperation.End)
+            root.terminal.ensureCursorVisible()
+
+    def on_finished(exit_code, exit_status):
+        if root.terminal_input:
+            root.terminal_input.setEnabled(True)
+        if root.terminal_run_btn:
+            root.terminal_run_btn.setEnabled(True)
+        if root.stop_process_btn:
+            root.stop_process_btn.hide()
+        root.terminal_process = None
+
+    if root.terminal_input:
+        root.terminal_input.setEnabled(False)
+    if root.terminal_run_btn:
+        root.terminal_run_btn.setEnabled(False)
+    if root.stop_process_btn:
+        root.stop_process_btn.show()
+
+    # Echo the command so it is visible in the terminal.
+    root.terminal.moveCursor(QTextCursor.MoveOperation.End)
+    root.terminal.insertPlainText(command + "\n")
+    root.terminal.moveCursor(QTextCursor.MoveOperation.End)
+    root.terminal.ensureCursorVisible()
+
+    root.terminal_process = Terminal.start_process(
+        command,
+        cwd=cwd,
+        parent=root,
+        on_output=append_output,
+        on_finished=on_finished,
+    )
+
+
+def _stop_terminal_process(root):
+    if hasattr(root, "terminal_process") and root.terminal_process:
+        Terminal.stop_process(root.terminal_process)
 
 
 class CodeEditorWidget(QWidget):

@@ -70,4 +70,11 @@ def build_terminal_panel(*, on_clear=None, on_run_command=None, on_stop=None):
 
     terminal_layout.addLayout(terminal_input_layout)
 
-    return terminal_container, terminal, terminal_input, stop_process_btn
+    return (
+        terminal_container,
+        terminal,
+        terminal_input,
+        run_command_btn,
+        stop_process_btn,
+        clear_terminal_btn,
+    )

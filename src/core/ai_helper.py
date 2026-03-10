@@ -69,7 +69,7 @@ def generate_flowchart_from_description(task_description, project_name):
                 "description": "End the process",
                 "filenames": [],
                 "files_to_import": []
-                "command": [],
+                "command": [Don't run the code at the last step, code execution should be done manually],
                 "next": []
             }}
         ]
@@ -99,7 +99,7 @@ def generate_flowchart_from_description(task_description, project_name):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.5,
+        temperature=0.6,
         max_tokens=3000
     )
     print(prompt)

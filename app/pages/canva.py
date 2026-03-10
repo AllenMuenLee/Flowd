@@ -6,7 +6,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QScrollArea, QMessageBox,
-    QTextEdit, QListWidget, QInputDialog
+    QTextEdit, QListWidget, QInputDialog, QMenu
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from app.components.draggable_block import DraggableBlock
@@ -14,6 +14,21 @@ from src.utils.CacheMng import load_cache
 from app.pages.loadingScreen import LoadingScreen
 from src.core.CodeEdt import CodeEditor
 from app.components.ConnectionLine import ConnectionLine
+
+
+class CanvasArea(QWidget):
+    def __init__(self, root, parent=None):
+        super().__init__(parent)
+        self._root = root
+
+    def contextMenuEvent(self, event):
+        if not self._root:
+            return
+        menu = QMenu(self)
+        add_action = menu.addAction("Add Node")
+        action = menu.exec(event.globalPos())
+        if action == add_action:
+            on_add_step(self._root)
 
 
 def build_canva(flowchart_data=None, on_back=None) -> QWidget:
@@ -34,17 +49,7 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     
     # Toolbar
     toolbar = QHBoxLayout()
-    
-    add_step_btn = QPushButton("Add Step")
-    add_step_btn.setObjectName("ToolbarButton")
-    add_step_btn.setToolTip("Add step")
-    add_step_btn.clicked.connect(lambda: on_add_step(root))
-    
-    delete_step_btn = QPushButton("Delete Step")
-    delete_step_btn.setObjectName("ToolbarButton")
-    delete_step_btn.setToolTip("Delete step")
-    delete_step_btn.clicked.connect(lambda: on_delete_step(root))
-    
+
     generate_btn = QPushButton("Generate Code")
     generate_btn.setObjectName("PrimaryButton")
     generate_btn.setToolTip("Generate code")
@@ -55,24 +60,19 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     open_editor_btn.setToolTip("Open code editor")
     open_editor_btn.clicked.connect(lambda: on_open_editor(root))
     open_editor_btn.hide()
-    
-    toolbar.addWidget(add_step_btn)
-    toolbar.addWidget(delete_step_btn)
-    toolbar.addStretch()
-    toolbar.addWidget(generate_btn)
-    toolbar.addWidget(open_editor_btn)
-    
-    left_layout.addLayout(toolbar)
 
-    back_row = QHBoxLayout()
     back_btn = QPushButton("Back")
     back_btn.setObjectName("BackButton")
     back_btn.setToolTip("Back")
     back_btn.setEnabled(on_back is not None)
     back_btn.clicked.connect(lambda: on_back() if on_back else None)
-    back_row.addWidget(back_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-    back_row.addStretch()
-    left_layout.addLayout(back_row)
+    
+    toolbar.addWidget(back_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+    toolbar.addStretch()
+    toolbar.addWidget(generate_btn)
+    toolbar.addWidget(open_editor_btn)
+    
+    left_layout.addLayout(toolbar)
     
     # Canvas scroll area
     scroll = QScrollArea()
@@ -80,7 +80,7 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     scroll.setObjectName("CanvasScroll")
     
     # ✅ BIGGER canvas for scrolling
-    canvas = QWidget()
+    canvas = CanvasArea(root)
     canvas.setObjectName("Canvas")
     canvas.setMinimumSize(1400, 2500)  # ✅ Much taller
     
@@ -154,19 +154,7 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     children_list.setMaximumHeight(80)
     details_layout.addWidget(children_list)
     
-    # Children buttons
-    children_buttons = QHBoxLayout()
-    add_child_btn = QPushButton("Add Connection")
-    remove_child_btn = QPushButton("Remove Connection")
-    add_child_btn.setObjectName("MiniButton")
-    remove_child_btn.setObjectName("MiniButton")
-    add_child_btn.setToolTip("Add connection")
-    remove_child_btn.setToolTip("Remove connection")
-    add_child_btn.clicked.connect(lambda: on_add_child(root))
-    remove_child_btn.clicked.connect(lambda: on_remove_child(root))
-    children_buttons.addWidget(add_child_btn)
-    children_buttons.addWidget(remove_child_btn)
-    details_layout.addLayout(children_buttons)
+    # Children buttons removed per new UX
     
     # Commands
     commands_label = QLabel("Commands:")
@@ -209,6 +197,7 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     root.code_generated = False
     root.generate_btn = generate_btn
     root.open_editor_btn = open_editor_btn
+    root.remove_connection = lambda from_id, to_id: remove_connection(root, from_id, to_id)
 
     if flowchart_data:
         project_root = flowchart_data.get("project_root", "")
@@ -318,8 +307,23 @@ def load_flowchart(root, flowchart_data):
             def handler(event):
                 on_block_click(root, sid, sd, event)
             return handler
-        
-        block.mousePressEvent = make_click_handler(step_id, step_data)
+
+        block.on_block_click = make_click_handler(step_id, step_data)
+        def make_context_handler(sid, sd):
+            def handler(event):
+                on_block_click(root, sid, sd, event)
+                menu = QMenu(block)
+                delete_action = menu.addAction("Delete Node")
+                action = menu.exec(event.globalPos())
+                if action == delete_action:
+                    root.selected_step_id = sid
+                    on_delete_step(root)
+            return handler
+        block.on_context_menu = make_context_handler(step_id, step_data)
+        block.on_connect_blocks = lambda from_id, to_id, from_dot_index, drop_pos: connect_blocks(
+            root, from_id, to_id, from_dot_index, drop_pos
+        )
+        block.root = root
         root.blocks[step_id] = block
     
     # Draw connections
@@ -332,7 +336,23 @@ def load_flowchart(root, flowchart_data):
         for child_id in children:
             to_block = root.blocks.get(child_id)
             if to_block:
-                line = ConnectionLine(from_block, to_block, parent=canvas)
+                meta = step_data.get("connection_meta", {}).get(child_id, {})
+                from_dot_index = meta.get("from_dot")
+                to_dot_index = meta.get("to_dot")
+                if from_dot_index is None:
+                    from_dot_index = 2  # bottom
+                if to_dot_index is None:
+                    to_dot_index = 0  # top
+                line = ConnectionLine(
+                    from_block,
+                    to_block,
+                    parent=canvas,
+                    from_dot_index=from_dot_index,
+                    to_dot_index=to_dot_index,
+                    root=root,
+                    from_id=step_id,
+                    to_id=child_id,
+                )
                 line.lower()
                 line.show()
                 root.connections.append(line)
@@ -375,6 +395,16 @@ def on_save_changes(root):
     
     try:
         prev_data = root.flowchart_data['steps'].get(root.selected_step_id, {})
+        connection_meta = prev_data.get("connection_meta", {})
+        updated_children = [
+            root.details_panel['children'].item(i).text()
+            for i in range(root.details_panel['children'].count())
+        ]
+        connection_meta = {
+            child_id: meta
+            for child_id, meta in connection_meta.items()
+            if child_id in updated_children
+        }
         updated_data = {
             'id': root.selected_step_id,
             'description': root.details_panel['description'].toPlainText(),
@@ -382,12 +412,10 @@ def on_save_changes(root):
                 root.details_panel['files'].item(i).text() 
                 for i in range(root.details_panel['files'].count())
             ],
-            'children': [
-                root.details_panel['children'].item(i).text() 
-                for i in range(root.details_panel['children'].count())
-            ],
+            'children': updated_children,
             'command': root.details_panel['commands'].toPlainText().split('\n'),
-            'files_to_import': root.flowchart_data['steps'][root.selected_step_id].get('files_to_import', [])
+            'files_to_import': root.flowchart_data['steps'][root.selected_step_id].get('files_to_import', []),
+            'connection_meta': connection_meta
         }
         
         print(root.code_editor_engine)
@@ -471,6 +499,57 @@ def on_remove_child(root):
         QMessageBox.warning(root, "No Selection", "Please select a connection to remove.")
 
 
+def connect_blocks(root, from_id, to_id, from_dot_index, drop_pos):
+    if not from_id or not to_id or from_id == to_id:
+        return
+    if not root.flowchart_data or "steps" not in root.flowchart_data:
+        return
+    if from_id not in root.flowchart_data["steps"]:
+        return
+    if to_id not in root.flowchart_data["steps"]:
+        return
+    step = root.flowchart_data["steps"][from_id]
+    children = step.get("children", [])
+    if to_id in children:
+        return
+    children.append(to_id)
+    step["children"] = children
+    connection_meta = step.get("connection_meta", {})
+    to_block = root.blocks.get(to_id)
+    to_dot_index = None
+    if to_block and drop_pos is not None:
+        to_dot_index = to_block.nearest_dot_index(drop_pos)
+    connection_meta[to_id] = {
+        "from_dot": from_dot_index,
+        "to_dot": to_dot_index
+    }
+    step["connection_meta"] = connection_meta
+    save_flowchart_to_file(root.flowchart_data)
+    load_flowchart(root, root.flowchart_data)
+    root.selected_step_id = from_id
+    on_block_click(root, from_id, root.flowchart_data["steps"][from_id], None)
+
+
+def remove_connection(root, from_id, to_id):
+    if not from_id or not to_id or from_id == to_id:
+        return
+    if not root.flowchart_data or "steps" not in root.flowchart_data:
+        return
+    step = root.flowchart_data["steps"].get(from_id)
+    if not step:
+        return
+    children = step.get("children", [])
+    if to_id in children:
+        children.remove(to_id)
+        step["children"] = children
+    if "connection_meta" in step and to_id in step["connection_meta"]:
+        step["connection_meta"].pop(to_id, None)
+    save_flowchart_to_file(root.flowchart_data)
+    load_flowchart(root, root.flowchart_data)
+    root.selected_step_id = from_id
+    on_block_click(root, from_id, root.flowchart_data["steps"][from_id], None)
+
+
 def on_add_step(root):
     step_id, ok = QInputDialog.getText(root, "Add Step", "Enter step ID (e.g., step5):")
     if not ok or not step_id:
@@ -516,6 +595,8 @@ def on_delete_step(root):
     for step_data in root.flowchart_data['steps'].values():
         if step_id in step_data.get('children', []):
             step_data['children'].remove(step_id)
+        if step_id in step_data.get('connection_meta', {}):
+            step_data['connection_meta'].pop(step_id, None)
     
     save_flowchart_to_file(root.flowchart_data)
     load_flowchart(root, root.flowchart_data)

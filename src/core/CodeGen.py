@@ -189,18 +189,49 @@ class CodingAgent:
             
             self.save_and_update(raw_code)
         
-        # Process children
-        for c in step["children"]:
-            self.stack.append([procedure["steps"][c], progress])
-
         return
 
     def generate_project(self, procedure, progress=None):
-        self.stack.append([procedure["steps"][procedure["start_id"]], progress])
+        steps = procedure.get("steps", {})
+        if not steps:
+            return
 
-        while(len(self.stack)):
-            self.generate(procedure, self.stack[0][0], progress=self.stack[0][1])
-            self.stack.pop(0)
+        # Build parent counts for each step
+        parent_counts = {step_id: 0 for step_id in steps.keys()}
+        for step_id, step in steps.items():
+            for child_id in step.get("children", []):
+                if child_id in parent_counts:
+                    parent_counts[child_id] += 1
+
+        # Initialize queue with steps whose parents are all complete
+        ready = [step_id for step_id, count in parent_counts.items() if count == 0]
+        completed = set()
+
+        while ready:
+            current_id = ready.pop(0)
+            if current_id in completed:
+                continue
+            step = steps.get(current_id)
+            if not step:
+                continue
+
+            self.generate(procedure, step, progress=progress)
+            completed.add(current_id)
+
+            for child_id in step.get("children", []):
+                if child_id not in parent_counts:
+                    continue
+                parent_counts[child_id] -= 1
+                if parent_counts[child_id] <= 0 and child_id not in completed:
+                    ready.append(child_id)
+
+        # Fallback for cycles or missing parents: process remaining steps in a stable order
+        remaining = [sid for sid in steps.keys() if sid not in completed]
+        for step_id in remaining:
+            step = steps.get(step_id)
+            if not step:
+                continue
+            self.generate(procedure, step, progress=progress)
 
     def save_and_update(self, text):
         pattern = r"\[([^\]]+)\]:?\s*```(?:[a-zA-Z0-9_+-]*)\n(.*?)\n```"
