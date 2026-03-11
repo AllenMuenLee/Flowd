@@ -143,7 +143,7 @@ class AstFlowchartGenerator:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
-            max_tokens=1500,
+            max_tokens=3000,
             stream=False
         )
 

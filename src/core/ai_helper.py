@@ -106,7 +106,7 @@ def generate_flowchart_from_description(task_description, project_name):
             {"role": "user", "content": prompt}
         ],
         temperature=0.5,
-        max_tokens=3500
+        max_tokens=1500
     )
     print(prompt)
     

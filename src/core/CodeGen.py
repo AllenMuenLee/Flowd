@@ -166,7 +166,7 @@ class CodingAgent:
                     },
                 ],
                 temperature=0.2,
-                max_tokens=3000,
+                max_tokens=2000,
             )
             
             if response.choices[0].message.content is None:
