@@ -42,8 +42,18 @@ class CodingAgent:
         ast_map_path = os.path.join(self.project_root, "ast_map.json")
         normalized = {os.path.abspath(k): v for k, v in self.ast_map.items()}
         FileMng.save_json(normalized, ast_map_path)
+        project_id = FileMng.get_project_id_by_root(self.project_root)
+        if project_id:
+            FileMng.save_ast_map(project_id, normalized)
+            FileMng.update_project_ast_map_path(project_id, ast_map_path)
 
     def _load_ast_map(self):
+        project_id = FileMng.get_project_id_by_root(self.project_root)
+        if project_id:
+            cached = FileMng.load_ast_map(project_id)
+            if cached:
+                self.ast_map = {os.path.abspath(k): v for k, v in cached.items()}
+                return True
         ast_map_path = os.path.join(self.project_root, "ast_map.json")
         if not os.path.exists(ast_map_path):
             return False
@@ -122,6 +132,7 @@ class CodingAgent:
         5. When indicating the filename, don't use # filename.py, use [filename.py]
         6. All files in FILES TO GENERATE must be generated.
         7. Add docstring for each function and class.
+        READ THE CONTEXT AND AVOID GENERATING EXISITNG FUNCTIONS OR METHOD
         """
         
         prompt = f"""
@@ -134,9 +145,9 @@ class CodingAgent:
         FILES YOU MIGHT NEED TO IMPORT: {step['files_to_import']}
 
         NO ASSUMING UNDER ANY CIRCUMSTANCE
-        NEVER REPEAT IMPORT AND CODE
-
-        Please give the list of functions and imports you see from the symbol table as a comment
+        NEVER REPEAT GENERATING THE SAME FUNCTION, CLASS, LOGIC
+        IF IT IS NOT
+        
         Please give the raw code and docstring right below the function or class definition, don't put it above
         or ask questions if the code is repeated or not clear context, please don't skip asking question even if the code is short.
         """
@@ -156,8 +167,6 @@ class CodingAgent:
                 ],
                 temperature=0.2,
                 max_tokens=3000,
-                top_p=0.9,
-                stream=False
             )
             
             if response.choices[0].message.content is None:
@@ -174,6 +183,13 @@ class CodingAgent:
                 return self.call_nova(step, topic)
             else:
                 raise  # Re-raise other exceptions
+
+    def _get_children(self, step):
+        if not isinstance(step, dict):
+            return []
+        if "chlidren" in step:
+            return step.get("chlidren", []) or []
+        return step.get("children", []) or []
 
     def generate(self, procedure, step, progress=None):
         if progress:
@@ -196,15 +212,17 @@ class CodingAgent:
         if not steps:
             return
 
-        # Build parent counts for each step
-        parent_counts = {step_id: 0 for step_id in steps.keys()}
+        # Reverse order: process leaves first (parents after children)
+        remaining_children = {step_id: 0 for step_id in steps.keys()}
+        parents_of = {step_id: [] for step_id in steps.keys()}
         for step_id, step in steps.items():
-            for child_id in step.get("children", []):
-                if child_id in parent_counts:
-                    parent_counts[child_id] += 1
+            children = self._get_children(step)
+            remaining_children[step_id] = len(children)
+            for child_id in children:
+                if child_id in parents_of:
+                    parents_of[child_id].append(step_id)
 
-        # Initialize queue with steps whose parents are all complete
-        ready = [step_id for step_id, count in parent_counts.items() if count == 0]
+        ready = [step_id for step_id, count in remaining_children.items() if count == 0]
         completed = set()
 
         while ready:
@@ -218,12 +236,12 @@ class CodingAgent:
             self.generate(procedure, step, progress=progress)
             completed.add(current_id)
 
-            for child_id in step.get("children", []):
-                if child_id not in parent_counts:
+            for parent_id in parents_of.get(current_id, []):
+                if parent_id not in remaining_children:
                     continue
-                parent_counts[child_id] -= 1
-                if parent_counts[child_id] <= 0 and child_id not in completed:
-                    ready.append(child_id)
+                remaining_children[parent_id] -= 1
+                if remaining_children[parent_id] <= 0 and parent_id not in completed:
+                    ready.append(parent_id)
 
         # Fallback for cycles or missing parents: process remaining steps in a stable order
         remaining = [sid for sid in steps.keys() if sid not in completed]

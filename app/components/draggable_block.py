@@ -10,7 +10,10 @@ class DraggableBlock(QLabel):
         self.step_data = step_data
         self.setObjectName("DraggableBlock")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFixedSize(150, 80)
+        self._base_width = 150
+        self._base_height = 80
+        self._scale = 1.0
+        self.setFixedSize(self._base_width, self._base_height)
         self.setProperty("selected", False)
         self._drag_offset = None
         self._hovered = False
@@ -23,6 +26,14 @@ class DraggableBlock(QLabel):
         self.root = None
         self._drag_over_target = None
         self._active_dot_index = None
+
+    def set_scale(self, scale: float) -> None:
+        if not scale or scale <= 0:
+            return
+        self._scale = scale
+        w = max(60, int(self._base_width * scale))
+        h = max(40, int(self._base_height * scale))
+        self.setFixedSize(w, h)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

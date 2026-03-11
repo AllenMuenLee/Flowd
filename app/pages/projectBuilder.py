@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QWidget,
@@ -23,6 +23,40 @@ from src.core.ai_helper import generate_flowchart_from_description
 from src.core.Flowchart import Flowchart
 from src.utils.CacheMng import save_current_project_id
 from app.pages.loadingScreen import LoadingScreen
+
+class ProjectBuildWorker(QThread):
+    finished = pyqtSignal(bool, str, str)  # success, message, flowchart_id
+
+    def __init__(self, project_path, description):
+        super().__init__()
+        self.project_path = project_path
+        self.description = description
+
+    def run(self):
+        try:
+            ai_data = generate_flowchart_from_description(self.description, self.project_path)
+            framework = ai_data.get("framework", "")
+            project_root = os.path.abspath(self.project_path)
+
+            flowchart = Flowchart(
+                name=os.path.basename(project_root),
+                framework=framework,
+                project_root=project_root
+            )
+
+            flowchart.create_from_ai_response(ai_data)
+            flowchart_dict = flowchart.flowchart_to_dictionary()
+            flowchart_id = flowchart.flowchart_id
+
+            flowchart.save_to_file(flowchart_id, flowchart_dict)
+            FileMng.save_project(flowchart_id, project_root)
+            save_current_project_id(flowchart_id)
+
+            self.finished.emit(True, "", flowchart_id)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            self.finished.emit(False, f"Failed to generate flowchart: {exc}", "")
 
 def _apply_theme(widget: QWidget) -> None:
     app_root = Path(__file__).resolve().parents[1]
@@ -148,37 +182,21 @@ def build_project_builder(on_project_created=None, on_back=None) -> QWidget:
         QApplication.processEvents()
         root.repaint()
 
-        try:
-            ai_data = generate_flowchart_from_description(desc, project_path)
-            framework = ai_data.get("framework", "")
-            project_root = os.path.abspath(project_path)
-            
-            # FIX: Use project_root= instead of project_path=
-            my_flowchart = Flowchart(
-                name=os.path.basename(project_root),
-                framework=framework,
-                project_root=project_root  # ✅ Changed from project_path
-            )
-            
-            my_flowchart.create_from_ai_response(ai_data)
-            flowchart_dict = my_flowchart.flowchart_to_dictionary()
-            flowchart_id = my_flowchart.flowchart_id
-            
-            my_flowchart.save_to_file(flowchart_id, flowchart_dict)
-            FileMng.save_project(flowchart_id, project_root)
-            save_current_project_id(flowchart_id)
+        worker = ProjectBuildWorker(project_path, desc)
 
-            if root._on_project_created:
-                root._on_project_created(True)
-            
-        except Exception as exc:
-            import traceback
-            traceback.print_exc()  # Print full error for debugging
-            hint_label.setText(f"Failed to generate flowchart: {exc}")
-            if root._on_project_created:
-                root._on_project_created(False)
-        finally:
+        def on_finished(success, message, _flowchart_id):
             loading.close()
+            if success:
+                if root._on_project_created:
+                    root._on_project_created(True)
+            else:
+                hint_label.setText(message or "Failed to generate flowchart.")
+                if root._on_project_created:
+                    root._on_project_created(False)
+
+        worker.finished.connect(on_finished)
+        worker.start()
+        root._build_worker = worker
 
     browse_button.clicked.connect(on_browse)
     create_button.clicked.connect(on_create)

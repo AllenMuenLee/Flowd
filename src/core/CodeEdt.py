@@ -73,8 +73,18 @@ class CodeEditor:
         ast_map_path = os.path.join(self.project_root, "ast_map.json")
         normalized = {os.path.abspath(k): v for k, v in self.ast_map.items()}
         FileMng.save_json(normalized, ast_map_path)
+        project_id = FileMng.get_project_id_by_root(self.project_root)
+        if project_id:
+            FileMng.save_ast_map(project_id, normalized)
+            FileMng.update_project_ast_map_path(project_id, ast_map_path)
 
     def _load_ast_map(self) -> bool:
+        project_id = FileMng.get_project_id_by_root(self.project_root)
+        if project_id:
+            cached = FileMng.load_ast_map(project_id)
+            if cached:
+                self.ast_map = {os.path.abspath(k): v for k, v in cached.items()}
+                return True
         ast_map_path = os.path.join(self.project_root, "ast_map.json")
         if not os.path.exists(ast_map_path):
             return False

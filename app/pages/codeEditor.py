@@ -95,6 +95,7 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     root.stop_process_btn = stop_process_btn
     root.terminal_debug_btn = terminal_debug_btn
     root.terminal_process = None
+    root.last_command_output = ""
     root.content_splitter = content_splitter
     root.flowchart_data = flowchart_data
     root.current_file = None
@@ -446,6 +447,7 @@ def _run_in_terminal(root, command: str, cwd: str | None):
 
     def append_output(text: str):
         if text:
+            root.last_command_output += text
             root.terminal.moveCursor(QTextCursor.MoveOperation.End)
             root.terminal.insertPlainText(text)
             root.terminal.moveCursor(QTextCursor.MoveOperation.End)
@@ -476,6 +478,7 @@ def _run_in_terminal(root, command: str, cwd: str | None):
     root.terminal.insertPlainText(command + "\n")
     root.terminal.moveCursor(QTextCursor.MoveOperation.End)
     root.terminal.ensureCursorVisible()
+    root.last_command_output = ""
 
     root.terminal_process = Terminal.start_process(
         command,
@@ -489,6 +492,7 @@ def _run_in_terminal(root, command: str, cwd: str | None):
 def _clear_terminal(root):
     if root.terminal:
         root.terminal.clear()
+    root.last_command_output = ""
     set_debug_visible(root.terminal_debug_btn, False)
 
 
@@ -497,11 +501,17 @@ def _open_debug_from_terminal(root):
         return
     toggle_chatbot(root, True)
     if root.chatbot_widget:
-        output = root.terminal.toPlainText().strip()
+        output = (root.last_command_output or "").strip()
         root.chatbot_widget.set_mode("debug")
         if output:
             root.chatbot_widget.set_input_text(
                 "Please debug this terminal output:\n\n" + output
+            )
+        else:
+            QMessageBox.information(
+                root,
+                "No Terminal Output",
+                "No output was captured after the last command.",
             )
 
 

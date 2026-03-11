@@ -1,7 +1,8 @@
 import os
+import json
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -11,9 +12,59 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QMessageBox,
+    QFileDialog,
+    QApplication,
 )
 
 import src.utils.FileMng as FileMng
+from src.core.AstFlowchartGen import AstFlowchartGenerator
+from src.core.Flowchart import Flowchart
+from src.utils.CacheMng import save_current_project_id
+from app.pages.loadingScreen import LoadingScreen
+
+
+class ProjectImportWorker(QThread):
+    finished = pyqtSignal(bool, str, str)  # success, message, flowchart_id
+
+    def __init__(self, project_root):
+        super().__init__()
+        self.project_root = project_root
+
+    def run(self):
+        try:
+            generator = AstFlowchartGenerator(self.project_root)
+            flowchart_data = generator.generate_all()
+            if not flowchart_data:
+                self.finished.emit(False, "Failed to generate flowchart.", "")
+                return
+
+            framework = flowchart_data.get("framework", "")
+            flowchart = Flowchart(
+                name=os.path.basename(self.project_root),
+                framework=framework,
+                project_root=self.project_root,
+            )
+            flowchart.create_from_ai_response(flowchart_data)
+            flowchart_dict = flowchart.flowchart_to_dictionary()
+            flowchart_id = flowchart.flowchart_id
+
+            flowchart.save_to_file(flowchart_id, flowchart_dict)
+            FileMng.save_project(flowchart_id, self.project_root)
+            save_current_project_id(flowchart_id)
+            ast_map_path = os.path.join(self.project_root, "ast_map.json")
+            if os.path.exists(ast_map_path):
+                try:
+                    with open(ast_map_path, "r", encoding="utf-8") as f:
+                        ast_map = json.load(f)
+                    FileMng.save_ast_map(flowchart_id, ast_map)
+                    FileMng.update_project_ast_map_path(flowchart_id, ast_map_path)
+                except Exception:
+                    pass
+            self.finished.emit(True, "", flowchart_id)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            self.finished.emit(False, f"Failed to import project: {exc}", "")
 
 
 class DashboardWidget(QWidget):
@@ -57,6 +108,11 @@ class DashboardWidget(QWidget):
         delete_btn.setObjectName("DashboardButton")
         delete_btn.clicked.connect(self._delete_selected_project)
         actions.addWidget(delete_btn)
+
+        import_btn = QPushButton("Import Project")
+        import_btn.setObjectName("DashboardButton")
+        import_btn.clicked.connect(self._import_project)
+        actions.addWidget(import_btn)
 
         new_btn = QPushButton("New Project")
         new_btn.setObjectName("DashboardPrimary")
@@ -117,3 +173,39 @@ class DashboardWidget(QWidget):
             self.refresh_projects()
         else:
             QMessageBox.warning(self, "Error", "Failed to delete project.")
+
+    def _import_project(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+        if not folder:
+            return
+
+        project_root = os.path.abspath(folder)
+        existing = FileMng.load_projects()
+        for project in existing:
+            if os.path.abspath(project.get("project_root", "")) == project_root:
+                QMessageBox.information(
+                    self,
+                    "Already Added",
+                    "This project is already in your list.",
+                )
+                return
+
+        loading = LoadingScreen(self, message="Importing project. Please wait...")
+        loading.show()
+        QApplication.processEvents()
+        self.repaint()
+
+        worker = ProjectImportWorker(project_root)
+
+        def on_finished(success, message, flowchart_id):
+            loading.close()
+            if not success:
+                QMessageBox.warning(self, "Error", message or "Failed to import project.")
+                return
+            self.refresh_projects()
+            if self._on_open_project:
+                self._on_open_project(flowchart_id)
+
+        worker.finished.connect(on_finished)
+        worker.start()
+        self._import_worker = worker

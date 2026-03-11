@@ -16,12 +16,41 @@ from src.core.CodeEdt import CodeEditor
 from app.components.ConnectionLine import ConnectionLine
 
 
+CHILDREN_KEY = "chlidren"
+LEGACY_CHILDREN_KEY = "children"
+
+
+def _get_children(step_data):
+    if not isinstance(step_data, dict):
+        return []
+    if CHILDREN_KEY in step_data:
+        return step_data.get(CHILDREN_KEY, []) or []
+    return step_data.get(LEGACY_CHILDREN_KEY, []) or []
+
+
+def _set_children(step_data, children):
+    if not isinstance(step_data, dict):
+        return
+    step_data[CHILDREN_KEY] = children
+    if LEGACY_CHILDREN_KEY in step_data:
+        step_data.pop(LEGACY_CHILDREN_KEY, None)
+
+
 class CanvasArea(QWidget):
     def __init__(self, root, parent=None):
         super().__init__(parent)
         self._root = root
+        self._panning = False
+        self._pan_start = None
+        self._scroll_start = None
+        self._pan_moved = False
+        self._suppress_context = False
 
     def contextMenuEvent(self, event):
+        if self._suppress_context:
+            self._suppress_context = False
+            event.accept()
+            return
         if not self._root:
             return
         menu = QMenu(self)
@@ -29,6 +58,64 @@ class CanvasArea(QWidget):
         action = menu.exec(event.globalPos())
         if action == add_action:
             on_add_step(self._root)
+
+    def wheelEvent(self, event):
+        if not self._root:
+            return super().wheelEvent(event)
+        modifiers = event.modifiers()
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                _adjust_zoom(self._root, 1.1)
+            elif delta < 0:
+                _adjust_zoom(self._root, 0.9)
+            event.accept()
+            return
+        super().wheelEvent(event)
+
+    def mousePressEvent(self, event):
+        if not self._root:
+            return super().mousePressEvent(event)
+        if event.button() == Qt.MouseButton.RightButton:
+            scroll = getattr(self._root, "canvas_scroll", None)
+            if scroll:
+                self._panning = True
+                self._pan_start = event.globalPosition().toPoint()
+                h = scroll.horizontalScrollBar()
+                v = scroll.verticalScrollBar()
+                self._scroll_start = (h.value(), v.value())
+                self._pan_moved = False
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._panning and self._pan_start and self._scroll_start:
+            scroll = getattr(self._root, "canvas_scroll", None)
+            if scroll:
+                delta = event.globalPosition().toPoint() - self._pan_start
+                if not self._pan_moved and (abs(delta.x()) > 3 or abs(delta.y()) > 3):
+                    self._pan_moved = True
+                h = scroll.horizontalScrollBar()
+                v = scroll.verticalScrollBar()
+                h.setValue(self._scroll_start[0] - delta.x())
+                v.setValue(self._scroll_start[1] - delta.y())
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._panning:
+            self._panning = False
+            if self._pan_moved:
+                self._suppress_context = True
+            self._pan_start = None
+            self._scroll_start = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 def build_canva(flowchart_data=None, on_back=None) -> QWidget:
@@ -198,6 +285,10 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     root.generate_btn = generate_btn
     root.open_editor_btn = open_editor_btn
     root.remove_connection = lambda from_id, to_id: remove_connection(root, from_id, to_id)
+    root.zoom_factor = 1.0
+    root._layout_positions = {}
+    root._layout_size = (1400, 2500)
+    root.canvas_scroll = scroll
 
     if flowchart_data:
         project_root = flowchart_data.get("project_root", "")
@@ -216,6 +307,7 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     
     if flowchart_data:
         load_flowchart(root, flowchart_data)
+
     
     return root
 
@@ -235,72 +327,113 @@ def load_flowchart(root, flowchart_data):
     root.blocks.clear()
     root.connections.clear()
     
-    # Vertical layout
+    # Layered layout to reduce crossings and avoid lines over nodes
     start_id = flowchart_data.get('start_id')
-    x_center = 600
-    y_offset = 50
-    y_spacing = 150
-    
-    visited = set()
+    x_center = 700
+    y_offset = 80
+    left_pad = 240
+    top_pad = 120
+    x_spacing = 240  # block width 150 + padding
+    y_spacing = 160  # block height 80 + padding
+
     positions = {}
     max_y = y_offset
-    
-    def assign_positions(step_id, x_pos, y_pos, depth=0):
-        nonlocal max_y
-        
-        if step_id in visited or step_id not in steps:
-            return y_pos
-        
-        visited.add(step_id)
-        positions[step_id] = (x_pos, y_pos)
-        max_y = max(max_y, y_pos)
-        
-        step_data = steps[step_id]
-        children = step_data.get('children', [])
-        
-        current_y = y_pos + y_spacing
-        
-        if len(children) == 0:
-            return current_y
-        elif len(children) == 1:
-            return assign_positions(children[0], x_pos, current_y, depth + 1)
-        else:
-            x_spread = 250
-            start_x = x_pos - (len(children) - 1) * x_spread / 2
-            
-            max_child_y = current_y
-            for i, child_id in enumerate(children):
-                child_x = start_x + i * x_spread
-                child_y = assign_positions(child_id, child_x, current_y, depth + 1)
-                max_child_y = max(max_child_y, child_y)
-            
-            return max_child_y
-    
-    if start_id and start_id in steps:
-        assign_positions(start_id, x_center, y_offset)
-    
-    orphan_y = y_offset
-    for step_id in steps:
-        if step_id not in positions:
-            positions[step_id] = (x_center + 350, orphan_y)
-            orphan_y += y_spacing
-            max_y = max(max_y, orphan_y)
+    max_x = x_center
+
+    def _build_parents_map():
+        parents = {sid: [] for sid in steps.keys()}
+        for sid, data in steps.items():
+            for cid in _get_children(data):
+                if cid in parents:
+                    parents[cid].append(sid)
+        return parents
+
+    def _find_root_ids(parents):
+        roots = [sid for sid, ps in parents.items() if not ps]
+        if start_id and start_id in steps:
+            if start_id in roots:
+                roots.remove(start_id)
+            roots.insert(0, start_id)
+        return roots or list(steps.keys())
+
+    def _assign_levels(parents):
+        level = {}
+        queue = _find_root_ids(parents)
+        for rid in queue:
+            level[rid] = 0
+        idx = 0
+        while idx < len(queue):
+            current = queue[idx]
+            idx += 1
+            curr_level = level.get(current, 0)
+            for child in _get_children(steps.get(current, {})):
+                if child not in steps:
+                    continue
+                next_level = max(level.get(child, -1), curr_level + 1)
+                if level.get(child) != next_level:
+                    level[child] = next_level
+                if child not in queue:
+                    queue.append(child)
+        # Any remaining nodes (cycles or disconnected)
+        for sid in steps.keys():
+            if sid not in level:
+                level[sid] = 0
+        return level
+
+    def _order_levels(levels, parents):
+        max_level = max(levels.values()) if levels else 0
+        level_nodes = {i: [] for i in range(max_level + 1)}
+        for sid, lvl in levels.items():
+            level_nodes.setdefault(lvl, [])
+            level_nodes[lvl].append(sid)
+
+        # Initial stable order
+        for lvl in level_nodes:
+            level_nodes[lvl].sort()
+
+        # Barycenter ordering to reduce crossings
+        for _ in range(4):
+            for lvl in range(1, max_level + 1):
+                prev = level_nodes.get(lvl - 1, [])
+                if not prev:
+                    continue
+                index = {sid: i for i, sid in enumerate(prev)}
+                def barycenter(node_id):
+                    ps = parents.get(node_id, [])
+                    if not ps:
+                        return index.get(node_id, 0)
+                    vals = [index.get(p, 0) for p in ps if p in index]
+                    return sum(vals) / len(vals) if vals else 0
+                level_nodes[lvl].sort(key=barycenter)
+        return level_nodes
+
+    parents = _build_parents_map()
+    levels = _assign_levels(parents)
+    ordered = _order_levels(levels, parents)
+
+    for lvl, nodes_at_level in ordered.items():
+        if not nodes_at_level:
+            continue
+        total_width = (len(nodes_at_level) - 1) * x_spacing
+        start_x = x_center - total_width / 2
+        y_pos = y_offset + lvl * y_spacing
+        for i, sid in enumerate(nodes_at_level):
+            x_pos = start_x + i * x_spacing
+            positions[sid] = (x_pos + left_pad, y_pos + top_pad)
+            max_x = max(max_x, x_pos)
+            max_y = max(max_y, y_pos)
     
     # ✅ Resize canvas dynamically
-    canvas.setMinimumHeight(max(2500, max_y + 300))
+    min_w = max(1400, int(max_x + 300 + left_pad))
+    min_h = max(2500, int(max_y + 300 + top_pad))
+    root._layout_positions = positions
+    root._layout_size = (min_w, min_h)
+    _apply_zoom(root)
     
     # Create blocks
     for step_id, step_data in steps.items():
         block = DraggableBlock(step_id, step_data, parent=canvas)
-        
-        if step_id in positions:
-            x_pos, y_pos = positions[step_id]
-            # ✅ FIX: Convert to int
-            block.move(int(x_pos - 75), int(y_pos))
-        else:
-            # ✅ FIX: Convert to int
-            block.move(int(x_center - 75), int(y_offset))
-        
+        _place_block(root, block, step_id, x_center, y_offset)
         block.show()
         
         def make_click_handler(sid, sd):
@@ -332,7 +465,7 @@ def load_flowchart(root, flowchart_data):
         if not from_block:
             continue
         
-        children = step_data.get('children', [])
+        children = _get_children(step_data)
         for child_id in children:
             to_block = root.blocks.get(child_id)
             if to_block:
@@ -357,6 +490,52 @@ def load_flowchart(root, flowchart_data):
                 line.show()
                 root.connections.append(line)
 
+    _refresh_connections(root)
+
+
+def _place_block(root, block, step_id, default_x, default_y):
+    scale = getattr(root, "zoom_factor", 1.0) or 1.0
+    block.set_scale(scale)
+    positions = getattr(root, "_layout_positions", {}) or {}
+    if step_id in positions:
+        x_pos, y_pos = positions[step_id]
+    else:
+        x_pos, y_pos = default_x, default_y
+    w = block.width()
+    block.move(int(x_pos * scale - (w / 2)), int(y_pos * scale))
+
+
+def _apply_zoom(root):
+    scale = getattr(root, "zoom_factor", 1.0) or 1.0
+    base_w, base_h = getattr(root, "_layout_size", (1400, 2500))
+    root.canvas.setMinimumSize(int(base_w * scale), int(base_h * scale))
+    for step_id, block in root.blocks.items():
+        _place_block(root, block, step_id, 600, 50)
+    _refresh_connections(root)
+
+
+def _adjust_zoom(root, factor):
+    current = getattr(root, "zoom_factor", 1.0) or 1.0
+    new_zoom = max(0.5, min(2.5, current * factor))
+    if abs(new_zoom - current) < 0.01:
+        return
+    root.zoom_factor = new_zoom
+    _apply_zoom(root)
+
+
+def _set_zoom(root, value):
+    current = getattr(root, "zoom_factor", 1.0) or 1.0
+    new_zoom = max(0.5, min(2.5, value))
+    if abs(new_zoom - current) < 0.01:
+        return
+    root.zoom_factor = new_zoom
+    _apply_zoom(root)
+
+
+def _refresh_connections(root):
+    for conn in root.connections:
+        conn.update_position()
+
 
 def on_block_click(root, step_id, step_data, event):
     root.selected_step_id = step_id
@@ -369,7 +548,7 @@ def on_block_click(root, step_id, step_data, event):
     
     children_list = root.details_panel['children']
     children_list.clear()
-    children_list.addItems(step_data.get('children', []))
+    children_list.addItems(_get_children(step_data))
     
     commands = step_data.get('command', [])
     root.details_panel['commands'].setPlainText('\n'.join(commands))
@@ -412,7 +591,7 @@ def on_save_changes(root):
                 root.details_panel['files'].item(i).text() 
                 for i in range(root.details_panel['files'].count())
             ],
-            'children': updated_children,
+            'chlidren': updated_children,
             'command': root.details_panel['commands'].toPlainText().split('\n'),
             'files_to_import': root.flowchart_data['steps'][root.selected_step_id].get('files_to_import', []),
             'connection_meta': connection_meta
@@ -427,8 +606,8 @@ def on_save_changes(root):
                 updated_data.get("description", ""),
                 prev_data.get("filenames", []),
                 updated_data.get("filenames", []),
-                prev_data.get("children", []),
-                updated_data.get("children", []),
+                _get_children(prev_data),
+                _get_children(updated_data),
             )
             update_generate_button(root)
         
@@ -479,7 +658,7 @@ def on_add_child(root):
     
     if ok and child_id:
         current_children = [
-            root.details_panel['children'].item(i).text() 
+            root.details_panel['children'].item(i).text()
             for i in range(root.details_panel['children'].count())
         ]
         
@@ -509,11 +688,11 @@ def connect_blocks(root, from_id, to_id, from_dot_index, drop_pos):
     if to_id not in root.flowchart_data["steps"]:
         return
     step = root.flowchart_data["steps"][from_id]
-    children = step.get("children", [])
+    children = _get_children(step)
     if to_id in children:
         return
     children.append(to_id)
-    step["children"] = children
+    _set_children(step, children)
     connection_meta = step.get("connection_meta", {})
     to_block = root.blocks.get(to_id)
     to_dot_index = None
@@ -538,10 +717,10 @@ def remove_connection(root, from_id, to_id):
     step = root.flowchart_data["steps"].get(from_id)
     if not step:
         return
-    children = step.get("children", [])
+    children = _get_children(step)
     if to_id in children:
         children.remove(to_id)
-        step["children"] = children
+        _set_children(step, children)
     if "connection_meta" in step and to_id in step["connection_meta"]:
         step["connection_meta"].pop(to_id, None)
     save_flowchart_to_file(root.flowchart_data)
@@ -565,7 +744,7 @@ def on_add_step(root):
         'filenames': [],
         'files_to_import': [],
         'command': [],
-        'children': []
+        'chlidren': []
     }
     
     root.flowchart_data['steps'][step_id] = new_step
@@ -593,8 +772,10 @@ def on_delete_step(root):
     del root.flowchart_data['steps'][step_id]
     
     for step_data in root.flowchart_data['steps'].values():
-        if step_id in step_data.get('children', []):
-            step_data['children'].remove(step_id)
+        children = _get_children(step_data)
+        if step_id in children:
+            children.remove(step_id)
+            _set_children(step_data, children)
         if step_id in step_data.get('connection_meta', {}):
             step_data['connection_meta'].pop(step_id, None)
     
@@ -701,6 +882,17 @@ def _call_on_code_generated(root) -> bool:
         print("⚠ Warning: on_code_generated callback not found!")
         print("   Code was generated successfully but cannot navigate automatically.")
     return callback_found
+
+
+def _stop_worker(worker, timeout_ms: int = 2000) -> None:
+    if not worker or not isinstance(worker, QThread):
+        return
+    if worker.isRunning():
+        worker.requestInterruption()
+        worker.wait(timeout_ms)
+        if worker.isRunning():
+            worker.terminate()
+            worker.wait(1000)
             
 
 def on_generate_code(root):
@@ -830,6 +1022,12 @@ class CanvaWidget(QWidget):
         if self.parent():
             self.setGeometry(self.parent().rect())
         super().showEvent(event)
+
+    def closeEvent(self, event):
+        if hasattr(self, "canvas_widget") and self.canvas_widget:
+            worker = getattr(self.canvas_widget, "worker", None)
+            _stop_worker(worker)
+        super().closeEvent(event)
 
 
 if __name__ == "__main__":

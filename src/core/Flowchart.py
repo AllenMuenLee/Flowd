@@ -30,7 +30,20 @@ class Flowchart:
     
     def get_start(self):
         """Get the starting step object."""
-        return self.steps.get(self.start_id, None)
+        if self.start_id and self.start_id in self.steps:
+            return self.steps.get(self.start_id, None)
+        if not self.steps:
+            return None
+        # Infer root when start_id is missing.
+        all_ids = set(self.steps.keys())
+        child_ids = set()
+        for step in self.steps.values():
+            for child_id in step.children or []:
+                child_ids.add(child_id)
+        roots = [sid for sid in all_ids if sid not in child_ids]
+        if roots:
+            return self.steps.get(roots[0])
+        return next(iter(self.steps.values()), None)
     
     def remove_step(self, step_id):
         """Remove a step from the flowchart."""
@@ -84,13 +97,17 @@ class Flowchart:
             project_root=project_root,
             flowchart_id=dictionary.get('flowchart_id')
         )
-        flowchart.start_id = dictionary['start_id']
         
         # Loop through each step in the dictionary
         for step_id, step_data in dictionary['steps'].items():
             # Convert dictionary to Step object and add to flowchart
             step = dictionary_to_step(step_data)
             flowchart.add_step(step)
+
+        if not flowchart.start_id:
+            start = flowchart.get_start()
+            if start:
+                flowchart.start_id = start.id
         
         return flowchart
     
@@ -149,12 +166,25 @@ class Flowchart:
         """
         Take AI response data and create flowchart.
         """
+        def _normalize_children(children):
+            if not children:
+                return []
+            normalized = []
+            for child in children:
+                if isinstance(child, dict):
+                    child_id = child.get("id") or child.get("name")
+                    if child_id:
+                        normalized.append(str(child_id))
+                else:
+                    normalized.append(str(child))
+            return normalized
+
         # Set framework if provided
         if 'framework' in ai_data:
             self.framework = ai_data['framework']
         
         # Loop through each step in AI response
-        for step_data in ai_data['steps']:
+        for step_data in ai_data['nodes']:
             # Extract data
             step_id = step_data['id']
             step_type = step_data.get('type', 'process')
@@ -162,7 +192,7 @@ class Flowchart:
             filenames = step_data.get('filenames', [])
             files_to_import = step_data.get('files_to_import', [])
             command = step_data.get('command', [])
-            next_steps = step_data['next']
+            next_steps = _normalize_children(step_data.get('children', []))
             
             # Prepend project root to filenames if project_root is set
             if self.project_root:
@@ -185,8 +215,6 @@ class Flowchart:
             # Add step to flowchart
             self.add_step(step)
             
-            # Set the first step as start if it's type "start"
-            if step_type == "start" and self.start_id is None:
-                self.set_start(step_id)
+            self.set_start(step_id)
         
         return self

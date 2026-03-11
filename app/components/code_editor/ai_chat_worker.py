@@ -18,9 +18,12 @@ class AIChatWorker(QThread):
 
     def run(self):
         try:
+            if self.isInterruptionRequested():
+                return
             from openai import OpenAI
             from dotenv import load_dotenv
             import src.utils.SymbolExt as SymbolExt
+            import src.utils.FileMng as FileMng
 
             load_dotenv()
 
@@ -33,7 +36,21 @@ class AIChatWorker(QThread):
 
             # Get project context
             ast_map = {}
-            ast_map = SymbolExt.initialize_ast_map(self.project_root, ast_map)
+            project_id = FileMng.get_project_id_by_root(self.project_root)
+            if project_id:
+                cached = FileMng.load_ast_map(project_id)
+                if cached:
+                    ast_map = {os.path.abspath(k): v for k, v in cached.items()}
+            if not ast_map:
+                ast_map = SymbolExt.initialize_ast_map(self.project_root, ast_map)
+                if project_id:
+                    FileMng.save_ast_map(project_id, ast_map)
+                    FileMng.update_project_ast_map_path(
+                        project_id, os.path.join(self.project_root, "ast_map.json")
+                    )
+
+            if self.isInterruptionRequested():
+                return
 
             if self.mode == "debug":
                 from src.core.Debugger import debugger
@@ -97,6 +114,8 @@ class AIChatWorker(QThread):
             # Call AI with retry logic
             max_retries = 2
             for attempt in range(max_retries):
+                if self.isInterruptionRequested():
+                    return
                 try:
                     response = client.chat.completions.create(
                         model="nova-pro-v1",

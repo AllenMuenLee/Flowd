@@ -91,7 +91,7 @@ def build_terminal_panel(*, on_clear=None, on_run_command=None, on_stop=None, on
 
     terminal_input_layout = QHBoxLayout()
 
-    terminal_prompt = QLabel("$")
+    terminal_prompt = QLabel(">")
     terminal_prompt.setObjectName("TerminalPrompt")
     terminal_input_layout.addWidget(terminal_prompt)
 

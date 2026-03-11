@@ -97,23 +97,6 @@ class ConnectionLine(QWidget):
         painter.drawPath(path)
 
 
-        # Draw arrowhead at end point
-        dx = end.x() - c2.x()
-        dy = end.y() - c2.y()
-        angle = math.atan2(dy, dx) if dx or dy else 0.0
-        arrow_len = 10
-        arrow_angle = math.radians(28)
-        left = QPointF(
-            end.x() - arrow_len * math.cos(angle - arrow_angle),
-            end.y() - arrow_len * math.sin(angle - arrow_angle),
-        )
-        right = QPointF(
-            end.x() - arrow_len * math.cos(angle + arrow_angle),
-            end.y() - arrow_len * math.sin(angle + arrow_angle),
-        )
-        painter.drawLine(end, left)
-        painter.drawLine(end, right)
-
         if self._hovered:
             mid = self._curve_midpoint().toPoint()
             self._draw_delete_x(painter, mid)

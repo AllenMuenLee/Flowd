@@ -25,8 +25,7 @@ def init_procedure_files(procedure):
             f.close()
 
 def save_project(project_id, project_path):
-    appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
-    os.makedirs(appdata_root, exist_ok=True)
+    appdata_root = _appdata_root()
     projects_path = os.path.join(appdata_root, "projects.json")
 
     if os.path.exists(projects_path):
@@ -48,7 +47,7 @@ def save_project(project_id, project_path):
 
 
 def load_projects():
-    appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+    appdata_root = _appdata_root()
     projects_path = os.path.join(appdata_root, "projects.json")
     if not os.path.exists(projects_path):
         return []
@@ -61,7 +60,7 @@ def load_projects():
 
 
 def delete_project(project_id):
-    appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+    appdata_root = _appdata_root()
     projects_path = os.path.join(appdata_root, "projects.json")
     if not os.path.exists(projects_path):
         return False
@@ -76,6 +75,77 @@ def delete_project(project_id):
         return True
     except Exception:
         return False
+
+
+def _appdata_root():
+    appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+    os.makedirs(appdata_root, exist_ok=True)
+    return appdata_root
+
+
+def get_project_id_by_root(project_root):
+    if not project_root:
+        return None
+    project_root_abs = os.path.abspath(project_root)
+    for project in load_projects():
+        root = os.path.abspath(project.get("project_root", ""))
+        if root == project_root_abs:
+            return project.get("id")
+    return None
+
+
+def update_project_ast_map_path(project_id, ast_map_path):
+    if not project_id or not ast_map_path:
+        return False
+    appdata_root = _appdata_root()
+    projects_path = os.path.join(appdata_root, "projects.json")
+    if not os.path.exists(projects_path):
+        return False
+    try:
+        with open(projects_path, "r", encoding="utf-8") as p:
+            projects = json.load(p)
+        if not isinstance(projects, list):
+            return False
+        updated = False
+        for project in projects:
+            if project.get("id") == project_id:
+                project["ast_map_path"] = ast_map_path
+                updated = True
+                break
+        if not updated:
+            return False
+        with open(projects_path, "w", encoding="utf-8") as p:
+            json.dump(projects, p, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def save_ast_map(project_id, ast_map):
+    if not project_id:
+        return None
+    appdata_root = _appdata_root()
+    ast_map_path = os.path.join(appdata_root, f"{project_id}.ast_map.json")
+    try:
+        with open(ast_map_path, "w", encoding="utf-8") as f:
+            json.dump(ast_map, f, indent=2)
+        return ast_map_path
+    except Exception:
+        return None
+
+
+def load_ast_map(project_id):
+    if not project_id:
+        return None
+    appdata_root = _appdata_root()
+    ast_map_path = os.path.join(appdata_root, f"{project_id}.ast_map.json")
+    if not os.path.exists(ast_map_path):
+        return None
+    try:
+        with open(ast_map_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def add_file_to_project(project_root, relative_path):

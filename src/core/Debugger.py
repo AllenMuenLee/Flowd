@@ -41,12 +41,13 @@ class debugger:
         filepath - #line number
         ...
 
+        The line number should be where the AI should focus its attention for the fix.
         If line numbers are unknown, choose the most relevant symbol line from AST tags.
         If you are unsure, still list the most likely files.
         """
 
         response = client.chat.completions.create(
-            model="nova-2-lite-v1",
+            model="nova-pro-v1",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
@@ -70,71 +71,88 @@ class debugger:
                     self.error_files[filename].append(line_number)
 
     def get_context(self, filelist):
-        context = ""
-        for f in filelist.keys():
-            for l in filelist[f]:
-                result = self.get_ast(f, int(l))
-                context += json.dumps(result, indent=2)
-                context += "\n"
+        context = []
+        for f, lines in filelist.items():
+            code_info = self.get_full_code(f)
+            focus_lines = ", ".join(str(l) for l in (lines or [])) or "(unknown)"
+            context.append(
+                {
+                    "file": code_info["file"],
+                    "focus_lines": focus_lines,
+                    "code": code_info["code"],
+                }
+            )
         return context
 
 
     def generate_edits(self, error_message):
-        context_ast = self.get_context(self.error_files)
+        context_entries = self.get_context(self.error_files)
+        if not context_entries:
+            return ""
 
         SYSTEM_PROMPT = "You are a debug expert, and your job is to identify the error and provide the correct fix for the error."
-        prompt = f"""
-        the error message is: 
-        {error_message}
+        responses = []
 
-        Context AST:
-        {context_ast}
+        for entry in context_entries:
+            prompt = f"""
+            the error message is: 
+            {error_message}
 
-        Please generate the edit for this error message, don't provide conversation, and you must provide correct spacing
-        return in this format:
-        if you want to edit: 
-            [Edit] filepath - #line number
-            ```
-            Code
-            ```
-        if you want to insert:
-            [Insert] filepath - #line number
-            ```
-            Code
-            ```
-        if you want to delete: 
-            [Delete] filepath - #line number
+            Context Code (single file + focus lines):
+            File path: {entry['file']}
+            Focus lines: {entry['focus_lines']}
+            Code:
+            {entry['code']}
 
-        Example:
-        [Insert] example.py - #12
-            ```
-            print(example_function(a, b))
-            ```
-        """
+            Please generate the edit for this error message, don't provide conversation, and you must provide correct spacing
+            return in this format:
+            if you want to edit: 
+                [Edit] filepath - #line number
+                ```
+                Code
+                ```
+            if you want to insert:
+                [Insert] filepath - #line number
+                ```
+                Code
+                ```
+            if you want to delete: 
+                [Delete] filepath - #line number
 
-        response = client.chat.completions.create(
-            model="nova-pro-v1",
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                },
-            ],
-            temperature=0.1,
-            max_tokens=2000,
-            stream=False
-        )
+            Make sure the filepath is an absolute path
+            Example:
+            [Insert] c://users//documents//example.py - #12
+                ```
+                print(example_function(a, b))
+                ```
+            """
 
-        return response.choices[0].message.content
+            response = client.chat.completions.create(
+                model="nova-pro-v1",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=5000,
+                stream=False
+            )
 
-    def get_ast(self, file_path, line_number, code=None):
-        if not file_path or not isinstance(line_number, int):
-            return {"file": file_path, "line": line_number, "query": "", "matches": []}
+            responses.append(response.choices[0].message.content)
 
+        return "\n\n".join(responses)
+
+    def get_full_code(self, file_path, code=None):
+        """Return full code for a file."""
+        if not file_path:
+            return {"file": file_path, "code": "# (no file)"}
+        abs_path = os.path.abspath(file_path)
         if code is None and os.path.exists(file_path):
             try:
                 with open(file_path, "r", encoding="utf-8") as fh:
@@ -142,25 +160,8 @@ class debugger:
             except Exception:
                 code = None
         if not code:
-            return {"file": file_path, "line": line_number, "query": "", "matches": []}
-
-        lines = code.splitlines()
-        if 1 <= line_number <= len(lines):
-            query = lines[line_number - 1].strip()
-        else:
-            query = ""
-        if not query:
-            query = code[:2000]
-
-        try:
-            from src.utils.AstEmbedding import AstRagTable
-            table = AstRagTable(persist_dir=None)
-            table.add_code(code, file_path)
-            matches = table.search(query, top_k=5)
-            return {"file": file_path, "line": line_number, "query": query, "matches": matches}
-        except Exception:
-            # Fallback when heavy deps (e.g., torch) are unavailable.
-            return {"file": file_path, "line": line_number, "query": query, "matches": []}
+            return {"file": abs_path, "code": "# (empty or missing file)"}
+        return {"file": abs_path, "code": code}
 
     def string_to_edit(self, edit_string):
         self.edits = {}

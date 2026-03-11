@@ -46,11 +46,6 @@ class ChatbotWidget(QWidget):
         self.mode_debug_btn.clicked.connect(lambda: self.set_mode("debug"))
         mode_menu_layout.addWidget(self.mode_debug_btn)
 
-        self.mode_flow_btn = QPushButton("Flowchart Editing")
-        self.mode_flow_btn.setObjectName("ModeButton")
-        self.mode_flow_btn.clicked.connect(lambda: self.set_mode("flowchart"))
-        mode_menu_layout.addWidget(self.mode_flow_btn)
-
         self.mode_general_btn = QPushButton("General")
         self.mode_general_btn.setObjectName("ModeButton")
         self.mode_general_btn.clicked.connect(lambda: self.set_mode("general"))
@@ -103,8 +98,11 @@ class ChatbotWidget(QWidget):
     def closeEvent(self, event):
         """Clean up threads when widget is closed."""
         if self.current_worker and self.current_worker.isRunning():
-            self.current_worker.terminate()
-            self.current_worker.wait(1000)  # Wait up to 1 second
+            self.current_worker.requestInterruption()
+            self.current_worker.wait(1500)  # Wait up to 1.5 seconds
+            if self.current_worker.isRunning():
+                self.current_worker.terminate()
+                self.current_worker.wait(1000)
         super().closeEvent(event)
 
     def send_message(self):
@@ -255,7 +253,6 @@ class ChatbotWidget(QWidget):
         self.mode = mode
         label = {
             "debug": "Debug",
-            "flowchart": "Flowchart Editing",
             "general": "General",
         }.get(mode, mode.title())
         self.mode_tag.setText(f"Selected: {label}")

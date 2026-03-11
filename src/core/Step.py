@@ -26,7 +26,7 @@ class Step:
             'filenames': self.filenames,
             'files_to_import': self.files_to_import,
             'command': self.command,
-            'children': self.children
+            'chlidren': self.children
         }
     
     def __repr__(self):
@@ -38,12 +38,15 @@ class Step:
 
 def dictionary_to_step(dictionary):
     """Create Step instance from dictionary."""
+    children = dictionary.get('chlidren')
+    if children is None:
+        children = dictionary.get('children', [])
     step = Step(
         dictionary['id'], 
         dictionary['description'], 
         dictionary['filenames'],
         dictionary.get('files_to_import', []),
         dictionary.get('command', []),
-        dictionary['children']
+        children
     )
     return step
