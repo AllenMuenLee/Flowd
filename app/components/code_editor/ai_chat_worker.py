@@ -58,14 +58,19 @@ class AIChatWorker(QObject):
                 extracted = dbg.extract_error(self.user_message, ast_map)
                 dbg.parse_error_files(extracted)
                 edits = dbg.generate_edits(self.user_message)
-                dbg.string_to_edit(edits)
-                dbg.fix()
+                edits_text = (edits or "").strip()
                 response = (
                     "Extracted files:\n"
                     f"{extracted}\n\n"
                     "Proposed edits:\n"
-                    f"{edits}"
+                    f"{edits_text or '(no edits generated)'}"
                 )
+                if edits_text:
+                    try:
+                        dbg.string_to_edit(edits)
+                        dbg.fix()
+                    except Exception as exc:
+                        response += f"\n\n(Note: failed to apply edits automatically: {exc})"
                 self.finished.emit(response)
                 return
 

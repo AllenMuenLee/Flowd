@@ -195,8 +195,7 @@ class CodeEditor:
             )
 
             prompt = f"""
-            Node ID: {node_id}
-
+            Here is the comparsion of the changed nodes. please generate edits based on this change.
             PREVIOUS DESCRIPTION:
             {prev_desc}
 
@@ -218,22 +217,23 @@ class CodeEditor:
             FILE CONTEXT (FULL CONTENT):
             {context_text}
 
-            Return output with two sections:
+            Please generate edits for the file, if the file doesn't have anything, just insert the code.
+            Please make sure the indent is correct.
 
-            [EDITS]
+            if you want to replace #line with your code: 
             [Edit] filepath - #line number
             ```
             Code
             ```
+
+            if you want to insert a code at #line:
             [Insert] filepath - #line number
             ```
             Code
             ```
-            [Delete] filepath - #line number
 
-            [LOG]
-            [LOG] filepath - previous_name -> current_name: functionality, output format
-            ...
+            if you want to delete #line: 
+            [Delete] filepath - #line number
             """
 
             response = client.chat.completions.create(

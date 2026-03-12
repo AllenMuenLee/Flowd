@@ -199,6 +199,26 @@ def build_project_builder(on_project_created=None, on_back=None) -> QWidget:
             hint_label.setText("Please provide " + " and ".join(missing) + ".")
             return
 
+        if not os.path.exists(project_path):
+            reply = QMessageBox.question(
+                root,
+                "Create Folder",
+                "That folder doesn't exist. Create it now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                hint_label.setText("Project creation cancelled.")
+                return
+            try:
+                os.makedirs(project_path, exist_ok=True)
+            except Exception as exc:
+                hint_label.setText(f"Failed to create folder: {exc}")
+                return
+        elif not os.path.isdir(project_path):
+            hint_label.setText("Project path must be a folder.")
+            return
+
         hint_label.setText("Generating flowchart...")
         loading = LoadingScreen(root, message="Generating your flowchart. Please wait...")
         loading.show()

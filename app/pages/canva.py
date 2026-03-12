@@ -230,6 +230,29 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
     file_buttons.addWidget(add_file_btn)
     file_buttons.addWidget(remove_file_btn)
     details_layout.addLayout(file_buttons)
+
+    # Files to import
+    imports_label = QLabel("Files to Import:")
+    imports_label.setObjectName("DetailsLabel")
+    details_layout.addWidget(imports_label)
+
+    imports_list = QListWidget()
+    imports_list.setObjectName("ImportsList")
+    imports_list.setMaximumHeight(80)
+    details_layout.addWidget(imports_list)
+
+    import_buttons = QHBoxLayout()
+    add_import_btn = QPushButton("Add Import")
+    remove_import_btn = QPushButton("Remove Import")
+    add_import_btn.setObjectName("MiniButton")
+    remove_import_btn.setObjectName("MiniButton")
+    add_import_btn.setToolTip("Add file to import")
+    remove_import_btn.setToolTip("Remove import")
+    add_import_btn.clicked.connect(lambda: on_add_import(root))
+    remove_import_btn.clicked.connect(lambda: on_remove_import(root))
+    import_buttons.addWidget(add_import_btn)
+    import_buttons.addWidget(remove_import_btn)
+    details_layout.addLayout(import_buttons)
     
     # ✅ Children/Connections editor
     children_label = QLabel("Next Steps (Children):")
@@ -274,6 +297,7 @@ def build_canva(flowchart_data=None, on_back=None) -> QWidget:
         'step_id': step_id_value,
         'description': desc_value,
         'files': files_list,
+        'imports': imports_list,
         'children': children_list,
         'commands': commands_value
     }
@@ -656,6 +680,8 @@ def _refresh_connections(root):
 
 
 def on_block_click(root, step_id, step_data, event):
+    if root and getattr(root, "flowchart_data", None):
+        step_data = root.flowchart_data.get("steps", {}).get(step_id, step_data or {})
     root.selected_step_id = step_id
     root.details_panel['step_id'].setText(step_id)
     root.details_panel['description'].setPlainText(step_data.get('description', ''))
@@ -663,6 +689,10 @@ def on_block_click(root, step_id, step_data, event):
     files_list = root.details_panel['files']
     files_list.clear()
     files_list.addItems(step_data.get('filenames', []))
+
+    imports_list = root.details_panel.get('imports')
+    imports_list.clear()
+    imports_list.addItems(step_data.get('files_to_import', []))
     
     children_list = root.details_panel['children']
     children_list.clear()
@@ -723,7 +753,10 @@ def on_save_changes(root):
             ],
             'chlidren': updated_children,
             'command': root.details_panel['commands'].toPlainText().split('\n'),
-            'files_to_import': root.flowchart_data['steps'][root.selected_step_id].get('files_to_import', []),
+            'files_to_import': [
+                root.details_panel['imports'].item(i).text()
+                for i in range(root.details_panel['imports'].count())
+            ],
             'connection_meta': connection_meta
         }
         
@@ -764,6 +797,24 @@ def on_remove_file(root):
     current_row = files_list.currentRow()
     if current_row >= 0:
         files_list.takeItem(current_row)
+    else:
+        QMessageBox.warning(root, "No Selection", "Please select a file to remove.")
+
+
+def on_add_import(root):
+    if not root.selected_step_id:
+        QMessageBox.warning(root, "No Selection", "Please select a step first.")
+        return
+    filename, ok = QInputDialog.getText(root, "Add Import", "Enter file to import:")
+    if ok and filename:
+        root.details_panel['imports'].addItem(filename)
+
+
+def on_remove_import(root):
+    imports_list = root.details_panel['imports']
+    current_row = imports_list.currentRow()
+    if current_row >= 0:
+        imports_list.takeItem(current_row)
     else:
         QMessageBox.warning(root, "No Selection", "Please select a file to remove.")
 
@@ -945,6 +996,8 @@ def on_delete_step(root):
     root.details_panel['step_id'].setText("No step selected")
     root.details_panel['description'].setPlainText("")
     root.details_panel['files'].clear()
+    if root.details_panel.get('imports'):
+        root.details_panel['imports'].clear()
     root.details_panel['children'].clear()
     root.details_panel['commands'].setPlainText("")
     

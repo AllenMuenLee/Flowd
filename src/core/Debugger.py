@@ -61,14 +61,18 @@ class debugger:
 
     def parse_error_files(self, ai_response):
         for line in ai_response.splitlines():
-            if ' - #' in line:
-                parts = line.split(' - #')
+            if ' - ' in line:
+                parts = line.split(' - ')
+                if (not parts):
+                    pats = line.split(' - #')
                 if len(parts) == 2:
                     filename = parts[0].strip()
                     line_number = parts[1].strip()
                     if filename not in self.error_files:
                         self.error_files[filename] = []
                     self.error_files[filename].append(line_number)
+
+        print(self.error_files)
 
     def get_context(self, filelist):
         context = []
@@ -94,29 +98,32 @@ class debugger:
         responses = []
 
         for entry in context_entries:
+            print(entry['file'])
             prompt = f"""
             the error message is: 
             {error_message}
 
             Context Code (single file + focus lines):
-            File path: {entry['file']}
+            File path (only generate modification for this code): {entry['file']}
             Focus lines: {entry['focus_lines']}
             Code:
             {entry['code']}
 
-            Please generate the edit for this error message, don't provide conversation, and you must provide correct spacing
+            Please generate the edit for this file based on the error message, don't provide conversation, and you must provide correct spacing
+            Please make sure the indent is correct.
+
             return in this format:
-            if you want to edit: 
+            if you want to replace #line with your code: 
                 [Edit] filepath - #line number
                 ```
                 Code
                 ```
-            if you want to insert:
+            if you want to insert a code at #line:
                 [Insert] filepath - #line number
                 ```
                 Code
                 ```
-            if you want to delete: 
+            if you want to delete #line: 
                 [Delete] filepath - #line number
 
             Make sure the filepath is an absolute path
@@ -181,7 +188,7 @@ class debugger:
         file_path = None
 
         for raw in lines:
-            line = raw.strip()
+            line = raw
             print("line:", line)
             if not in_code:
                 exp = r"\[(Edit|Insert|Delete)\] (.+?) - #(\d+)"

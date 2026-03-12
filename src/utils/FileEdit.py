@@ -1,5 +1,4 @@
 def edit(lines, content, line_n):
-    print("editing")
     lines[line_n - 1] = content + "\n"
 
 def delete(lines, line_n):
@@ -14,6 +13,7 @@ def apply_edits(edits):
         print(f)
         with open(f, 'r', encoding='utf-8') as file:
             lines = file.readlines()
+            print(lines)
 
         for action in actions:
             if not action or len(action) < 2:

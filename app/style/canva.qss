@@ -37,6 +37,7 @@ QLabel#StepIdValue {
 
 QTextEdit#DescValue,
 QListWidget#FilesList,
+QListWidget#ImportsList,
 QListWidget#ChildrenList,
 QTextEdit#CommandsValue {
     background: #10141c;

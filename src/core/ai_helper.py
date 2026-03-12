@@ -97,6 +97,7 @@ def generate_flowchart_from_description(task_description, project_name):
     9. The strucutre should be tree like, usually the file that integrates each functions is the parent node, with each functions as its child node.
     10. Don't run the application in any node.
     11. You must create a main file (main, index.html, or other commonly seen file name for the running file)
+    12. in each descriptions, be clear about what the file's role is in the project, and how is it gonna work with other files, functions, or classes.
     """
     
     # Call Nova AI
