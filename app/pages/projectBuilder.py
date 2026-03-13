@@ -164,6 +164,11 @@ def build_project_builder(on_project_created=None, on_back=None) -> QWidget:
 
     button_row = QHBoxLayout()
     button_row.addStretch(1)
+    manual_button = QPushButton("Create Manually")
+    manual_button.setObjectName("SecondaryButton")
+    manual_button.setToolTip("Build your own flowchart without AI")
+    manual_button.setCursor(Qt.CursorShape.PointingHandCursor)
+    button_row.addWidget(manual_button)
     create_button = QPushButton("Create Project")
     create_button.setObjectName("PrimaryButton")
     create_button.setToolTip("Create project")
@@ -244,6 +249,28 @@ def build_project_builder(on_project_created=None, on_back=None) -> QWidget:
 
     browse_button.clicked.connect(on_browse)
     create_button.clicked.connect(on_create)
+
+    def on_create_manually():
+        project_path = title_input.text().strip()
+        if not project_path:
+            hint_label.setText("Please provide a project path.")
+            return
+        if not os.path.exists(project_path):
+            os.makedirs(project_path, exist_ok=True)
+        from src.core.Step import Step
+        project_root = os.path.abspath(project_path)
+        flowchart = Flowchart(name=os.path.basename(project_root), framework="", project_root=project_root)
+        placeholder = Step(id="step1", description="Describe this step", filenames=[], files_to_import=[], command=[], children=[])
+        flowchart.add_step(placeholder)
+        flowchart.set_start("step1")
+        flowchart_dict = flowchart.flowchart_to_dictionary()
+        flowchart.save_to_file(flowchart.flowchart_id, flowchart_dict)
+        FileMng.save_project(flowchart.flowchart_id, project_root)
+        save_current_project_id(flowchart.flowchart_id)
+        if root._on_project_created:
+            root._on_project_created(True)
+
+    manual_button.clicked.connect(on_create_manually)
 
     return root
 

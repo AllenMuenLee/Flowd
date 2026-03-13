@@ -38,9 +38,9 @@ def apply_editor_theme(code_editor: QsciScintilla) -> None:
     code_editor.setSelectionForegroundColor(QColor("#ffffff"))
     code_editor.setMarginsForegroundColor(QColor("#e7e9ee"))
     code_editor.setMarginsBackgroundColor(QColor("#10141c"))
-    code_editor.zoomTo(10)
-    code_editor.setExtraAscent(-5)
-    code_editor.setExtraDescent(-5)
+    code_editor.zoomTo(17)
+    code_editor.setExtraAscent(-4)
+    code_editor.setExtraDescent(-4)
 
 
 def apply_default_lexer(code_editor: QsciScintilla) -> None:

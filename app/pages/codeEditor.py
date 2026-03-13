@@ -442,6 +442,7 @@ def _run_in_terminal(root, command: str, cwd: str | None):
     def on_finished(exit_code, exit_status):
         if root.terminal_input:
             root.terminal_input.setEnabled(True)
+            root.terminal_input.setPlaceholderText("Type command and press Enter...")
         if root.terminal_run_btn:
             root.terminal_run_btn.setEnabled(True)
         if root.stop_process_btn:
@@ -451,7 +452,8 @@ def _run_in_terminal(root, command: str, cwd: str | None):
         root.terminal_process = None
 
     if root.terminal_input:
-        root.terminal_input.setEnabled(False)
+        root.terminal_input.setEnabled(True)
+        root.terminal_input.setPlaceholderText("Process running — type input and press Enter...")
     if root.terminal_run_btn:
         root.terminal_run_btn.setEnabled(False)
     if root.stop_process_btn:

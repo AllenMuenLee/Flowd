@@ -2,7 +2,55 @@ import sys
 import os
 import json
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QStackedWidget, QPushButton
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt, QPoint
+from PyQt6.QtGui import QCursor
+
+
+class DraggableAIButton(QPushButton):
+    """Floating AI button that can be freely dragged around its parent window."""
+
+    DRAG_THRESHOLD = 6  # pixels of movement before we treat it as a drag
+
+    def __init__(self, parent=None):
+        super().__init__("AI", parent)
+        self._drag_start_global = QPoint()
+        self._drag_start_local = QPoint()
+        self._is_dragging = False
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_global = event.globalPosition().toPoint()
+            self._drag_start_local = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._is_dragging = False
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.globalPosition().toPoint() - self._drag_start_global
+            if not self._is_dragging and delta.manhattanLength() > self.DRAG_THRESHOLD:
+                self._is_dragging = True
+                self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+
+            if self._is_dragging:
+                parent = self.parent()
+                new_pos = event.globalPosition().toPoint() - self._drag_start_local
+                # Clamp within parent bounds
+                max_x = parent.width() - self.width()
+                max_y = parent.height() - self.height()
+                new_pos.setX(max(0, min(max_x, new_pos.x())))
+                new_pos.setY(max(0, min(max_y, new_pos.y())))
+                self.move(new_pos)
+        event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            if not self._is_dragging:
+                # Treat as a normal click — toggle checked state and emit
+                self.setChecked(not self.isChecked())
+                self.clicked.emit(self.isChecked())
+            self._is_dragging = False
+        event.accept()
 
 from app.pages.dashboard import DashboardWidget
 from app.pages.projectBuilder import ProjectBuilderWidget
@@ -110,8 +158,80 @@ def main():
 
     chat_overlay = QWidget(window)
     chat_overlay.setObjectName("GlobalChatOverlay")
+    chat_overlay.setAutoFillBackground(True)
+    chat_overlay.setStyleSheet("""
+        QWidget#GlobalChatOverlay {
+            background-color: #1e2233;
+            border: 1.5px solid #3a4460;
+            border-radius: 12px;
+        }
+        QLabel#ChatTitle {
+            color: #e8eaf6;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 4px 0;
+        }
+        QTextEdit#ChatHistory {
+            background-color: #151827;
+            color: #c9cfe8;
+            border: 1px solid #2a3250;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 13px;
+            selection-background-color: #2f6fed;
+        }
+        QTextEdit#ChatInput {
+            background-color: #151827;
+            color: #c9cfe8;
+            border: 1px solid #2a3250;
+            border-radius: 6px;
+            padding: 6px;
+            font-size: 13px;
+        }
+        QTextEdit#ChatInput:focus {
+            border: 1px solid #2f6fed;
+        }
+        QPushButton#ChatSendButton {
+            background-color: #2f6fed;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        QPushButton#ChatSendButton:hover   { background-color: #3a7bff; }
+        QPushButton#ChatSendButton:pressed  { background-color: #1f56c9; }
+        QPushButton#ChatSendButton:disabled { background-color: #2a3250; color: #5a6280; }
+        QPushButton#ChatPlusButton {
+            background-color: #252a40;
+            color: #8899cc;
+            border: 1px solid #3a4460;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        QPushButton#ChatPlusButton:hover { background-color: #2f3650; color: #c9cfe8; }
+        QPushButton#ModeButton {
+            background-color: #252a40;
+            color: #8899cc;
+            border: 1px solid #3a4460;
+            border-radius: 5px;
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        QPushButton#ModeButton:hover { background-color: #2f3650; color: #e8eaf6; }
+        QWidget#ModeMenu { background: transparent; }
+        QLabel#ModeTag {
+            color: #5a7acc;
+            font-size: 11px;
+            padding: 2px 0;
+        }
+    """)
     chat_overlay_layout = QVBoxLayout(chat_overlay)
-    chat_overlay_layout.setContentsMargins(0, 0, 0, 0)
+    chat_overlay_layout.setContentsMargins(12, 12, 12, 12)
+    chat_overlay_layout.setSpacing(8)
     chat_overlay.hide()
 
     chat_widget = {"instance": None}
@@ -137,11 +257,12 @@ def main():
         else:
             ai_btn.setChecked(False)
 
-    ai_btn = QPushButton("AI", window)
+    ai_btn = DraggableAIButton(window)
     ai_btn.setObjectName("GlobalFloatingAIButton")
     ai_btn.setCheckable(True)
-    ai_btn.setToolTip("AI chat")
+    ai_btn.setToolTip("AI chat — drag to reposition")
     ai_btn.setFixedSize(56, 56)
+    ai_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
     ai_btn.setStyleSheet(
         "QPushButton { background: #2f6fed; color: #ffffff; border: none; border-radius: 28px; "
         "font-weight: 700; font-size: 13px; }"
@@ -149,11 +270,39 @@ def main():
         "QPushButton:checked { background: #1f56c9; }"
     )
     ai_btn.clicked.connect(lambda checked: _toggle_chat_overlay(checked))
-    ai_btn.raise_()
+    ai_btn.hide()  # Hidden by default; shown only on Flowchart (3) and CodeEditor (4)
+
+    # Pages where the AI button should be visible
+    AI_BUTTON_PAGES = {3, 4}
+
+    def _on_page_changed(index):
+        visible = index in AI_BUTTON_PAGES
+        ai_btn.setVisible(visible)
+        if not visible:
+            # Also hide the chat overlay when leaving AI-enabled pages
+            _toggle_chat_overlay(show=False)
+        else:
+            ai_btn.raise_()
+
+    stacked.currentChanged.connect(_on_page_changed)
+
+    _btn_initial_pos_set = [False]
 
     def _reposition_overlay():
         margin = 20
-        ai_btn.move(margin, max(margin, window.height() - ai_btn.height() - margin))
+        # On first show, place the button at the default bottom-left corner.
+        # On subsequent resizes, just clamp the current position to stay within bounds.
+        if not _btn_initial_pos_set[0]:
+            ai_btn.move(margin, max(margin, window.height() - ai_btn.height() - margin))
+            _btn_initial_pos_set[0] = True
+        else:
+            cur = ai_btn.pos()
+            max_x = window.width() - ai_btn.width() - margin
+            max_y = window.height() - ai_btn.height() - margin
+            ai_btn.move(
+                max(margin, min(cur.x(), max_x)),
+                max(margin, min(cur.y(), max_y)),
+            )
         overlay_w = 380
         overlay_h = 620
         chat_overlay.setGeometry(
@@ -163,7 +312,8 @@ def main():
             min(overlay_h, window.height() - (margin * 2)),
         )
         chat_overlay.raise_()
-        ai_btn.raise_()
+        if ai_btn.isVisible():
+            ai_btn.raise_()
 
     orig_resize = window.resizeEvent
 

@@ -19,7 +19,8 @@ class ChatbotWidget(QWidget):
         self.worker_thread = None
 
         self.setObjectName("ChatbotWidget")
-        self.setFixedWidth(350)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
