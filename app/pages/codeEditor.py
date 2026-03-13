@@ -22,6 +22,7 @@ from app.components.code_editor.terminal_panel import (
     set_debug_visible,
 )
 from app.components.code_editor.page_theme import apply_code_editor_theme
+from src.core.CodeEdt import CodeEditor as CodeEditorEngine
 
 
 def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
@@ -121,6 +122,12 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     if flowchart_data:
         project_root = flowchart_data.get('project_root', '')
         file_panel_actions.set_project_root(root.file_tree, root.file_model, project_root)
+        if project_root:
+            root.code_editor_engine = CodeEditorEngine(project_root)
+        else:
+            root.code_editor_engine = None
+    else:
+        root.code_editor_engine = None
 
     return root
 
@@ -357,10 +364,24 @@ def save_file(root):
         return
     
     try:
+        prev_content = ""
+        try:
+            with open(root.current_file, 'r', encoding='utf-8') as f:
+                prev_content = f.read()
+        except Exception:
+            prev_content = ""
+
         content = root.code_editor.text()
-        
+
         with open(root.current_file, 'w', encoding='utf-8') as f:
             f.write(content)
+
+        if root.code_editor_engine:
+            root.code_editor_engine.add_changes(
+                root.current_file,
+                prev_content,
+                content,
+            )
         
         filename = os.path.basename(root.current_file)
         QMessageBox.information(root, "Success", f"File saved: {filename}")
@@ -504,6 +525,21 @@ def _open_debug_from_terminal(root):
 def _stop_terminal_process(root):
     if hasattr(root, "terminal_process") and root.terminal_process:
         Terminal.stop_process(root.terminal_process)
+
+
+def record_editor_diff(root):
+    if not root or not getattr(root, "code_editor_engine", None):
+        return
+    if not root.current_file:
+        return
+    prev_content = ""
+    try:
+        with open(root.current_file, "r", encoding="utf-8") as f:
+            prev_content = f.read()
+    except Exception:
+        prev_content = ""
+    curr_content = root.code_editor.text() if root.code_editor else ""
+    root.code_editor_engine.add_changes(root.current_file, prev_content, curr_content)
 
 
 class CodeEditorWidget(QWidget):

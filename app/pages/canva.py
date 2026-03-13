@@ -762,7 +762,7 @@ def on_save_changes(root):
         print(root.code_editor_engine)
 
         if root.code_editor_engine:
-            root.code_editor_engine.add_changes(
+            root.code_editor_engine.add_node_changes(
                 root.selected_step_id,
                 prev_data.get("description", ""),
                 updated_data.get("description", ""),
@@ -928,7 +928,7 @@ def on_add_step(root):
     }
     
     if root.code_editor_engine:
-        root.code_editor_engine.add_changes(
+        root.code_editor_engine.add_node_changes(
             step_id,
             "",
             new_step.get("description", ""),
@@ -963,7 +963,7 @@ def on_delete_step(root):
     
     step_data = root.flowchart_data['steps'].get(step_id, {})
     if root.code_editor_engine:
-        root.code_editor_engine.add_changes(
+        root.code_editor_engine.add_node_changes(
             step_id,
             step_data.get("description", ""),
             "",

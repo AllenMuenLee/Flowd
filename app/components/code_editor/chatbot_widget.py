@@ -10,10 +10,11 @@ from app.components.code_editor.ai_chat_worker import AIChatWorker
 class ChatbotWidget(QWidget):
     """Chatbot sidebar widget with AI integration."""
 
-    def __init__(self, project_root, flowchart_data, parent=None):
+    def __init__(self, project_root, flowchart_data, parent=None, on_user_message=None):
         super().__init__(parent)
         self.project_root = project_root
         self.flowchart_data = flowchart_data
+        self.on_user_message = on_user_message
         self.conversation_history = []
         self.current_worker = None
         self.worker_thread = None
@@ -126,6 +127,12 @@ class ChatbotWidget(QWidget):
         message = self.input_field.toPlainText().strip()
         if not message or self.current_worker:
             return
+
+        if self.on_user_message:
+            try:
+                self.on_user_message()
+            except Exception:
+                pass
 
         self._append_user(message)
         self.input_field.clear()

@@ -55,9 +55,40 @@ class CodeEditor:
         self.project_root = os.path.normpath(project_root)
         self.edits: Dict[str, List[List[object]]] = {}
         self.changes: Dict[str, Dict[str, Dict[str, object]]] = {}
+        self.file_changes: Dict[str, Dict[str, object]] = {}
         self.edit_log: List[Dict[str, str]] = []
 
     def add_changes(
+        self,
+        file_path: str,
+        prev_content: str,
+        curr_content: str,
+    ) -> None:
+        if not file_path:
+            return
+        prev_content = prev_content or ""
+        curr_content = curr_content or ""
+        if prev_content == curr_content:
+            if file_path in self.file_changes:
+                self.file_changes.pop(file_path, None)
+            return
+        import difflib
+        diff = "\n".join(
+            difflib.unified_diff(
+                prev_content.splitlines(),
+                curr_content.splitlines(),
+                fromfile="previous",
+                tofile="current",
+                lineterm="",
+            )
+        )
+        self.file_changes[file_path] = {
+            "prev": prev_content,
+            "curr": curr_content,
+            "diff": diff,
+        }
+
+    def add_node_changes(
         self,
         node_id: str,
         prev_des: str,
@@ -77,7 +108,7 @@ class CodeEditor:
         self.changes[node_id]["children"] = {"prev": prev_children or [], "curr": curr_children or []}
 
     def has_changes(self) -> bool:
-        return bool(self.changes)
+        return bool(self.changes) or bool(self.file_changes)
 
     def save_and_update(self, text: str) -> None:
         """Save code blocks to files and update ast_map.json."""

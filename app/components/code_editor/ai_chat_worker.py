@@ -1,6 +1,9 @@
 import os
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from src.core.ai_helper import generate_flowchart_edit_from_description
+from src.utils.CacheMng import load_cache, save_cache
+import json as _json
 
 
 class AIChatWorker(QObject):
@@ -54,7 +57,6 @@ class AIChatWorker(QObject):
 
             if self.mode == "debug":
                 from src.core.Debugger import debugger
-                from src.utils.CacheMng import load_cache, save_cache
                 dbg = debugger(self.project_root)
 
                 cache = load_cache()
@@ -132,14 +134,11 @@ class AIChatWorker(QObject):
                 return
 
             if self.mode == "flowchart":
-                from src.core.ai_helper import generate_flowchart_edit_from_description
-                from src.utils.CacheMng import load_cache
-                import json as _json
-
                 updated = generate_flowchart_edit_from_description(
                     self.user_message,
                     self.flowchart_data,
                 )
+                self.flowchart_data = updated
 
                 cache = load_cache()
                 project_id = cache.get("current_project_id")
@@ -148,12 +147,13 @@ class AIChatWorker(QObject):
                     flowchart_path = os.path.join(appdata_root, f"{project_id}.flowchart.json")
                     try:
                         with open(flowchart_path, "w", encoding="utf-8") as fh:
-                            _json.dump(updated, fh, indent=2)
+                            _json.dump(updated, fh, indent=4)
                     except Exception:
+                        print("failed to update")
                         pass
 
                 response = (
-                    "Updated flowchart saved. Here's the new flowchart JSON:\n"
+                    "Updated flowchart saved and applied. Here's the new flowchart JSON:\n"
                     f"{_json.dumps(updated, indent=2)}"
                 )
                 self.finished.emit(response)
@@ -204,8 +204,8 @@ class AIChatWorker(QObject):
                     response = client.chat.completions.create(
                         model="nova-pro-v1",
                         messages=messages,
-                        temperature=0.7,
-                        max_tokens=1000,
+                        temperature=0.5,
+                        max_tokens=1500,
                     )
 
                     ai_response = response.choices[0].message.content
@@ -222,7 +222,6 @@ class AIChatWorker(QObject):
         except Exception as e:
             import traceback
             import re
-            from src.utils.CacheMng import load_cache, save_cache
 
             traceback.print_exc()
             error_msg = str(e)

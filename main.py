@@ -56,7 +56,7 @@ from app.pages.dashboard import DashboardWidget
 from app.pages.projectBuilder import ProjectBuilderWidget
 from app.pages.settings import SettingsWidget
 from app.pages.canva import CanvaWidget
-from app.pages.codeEditor import CodeEditorWidget
+from app.pages.codeEditor import CodeEditorWidget, record_editor_diff
 from app.components.code_editor.chatbot_widget import ChatbotWidget
 from src.utils.CacheMng import load_cache, save_current_project_id
 
@@ -236,12 +236,22 @@ def main():
 
     chat_widget = {"instance": None}
 
+    def _on_chat_message():
+        current = stacked.currentWidget()
+        if isinstance(current, CodeEditorWidget):
+            record_editor_diff(current.editor_widget)
+
     def _build_chat_widget():
         if chat_widget["instance"]:
             chat_widget["instance"].setParent(None)
         flowchart_data = load_flowchart_data() or {}
         project_root = flowchart_data.get("project_root", "") if isinstance(flowchart_data, dict) else ""
-        widget = ChatbotWidget(project_root, flowchart_data, parent=chat_overlay)
+        widget = ChatbotWidget(
+            project_root,
+            flowchart_data,
+            parent=chat_overlay,
+            on_user_message=_on_chat_message,
+        )
         chat_overlay_layout.addWidget(widget)
         chat_widget["instance"] = widget
 
