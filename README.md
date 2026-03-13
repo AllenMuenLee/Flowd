@@ -1,4 +1,4 @@
-# FLOWD - Structural Vibe Coding Assistant
+# FLOWD - Code with the flow
 
 FLOWD is a PyQt6 desktop app that helps you go from a high-level task description to a structured flowchart and generated code. It uses Amazon Nova models via the OpenAI client to:
 
