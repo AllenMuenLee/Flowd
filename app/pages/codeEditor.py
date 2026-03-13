@@ -352,6 +352,8 @@ def load_file(root, filename):
         _set_editor_lexer(root, filename)
         root.current_file_label.setText(f"Editing: {filename}")
         root.current_file = file_path
+        if root.code_editor_engine:
+            root.code_editor_engine.track_file_snapshot(file_path, content)
     except Exception as e:
         QMessageBox.critical(root, "Error", f"Failed to load file: {e}")
 
@@ -377,11 +379,8 @@ def save_file(root):
             f.write(content)
 
         if root.code_editor_engine:
-            root.code_editor_engine.add_changes(
-                root.current_file,
-                prev_content,
-                content,
-            )
+            root.code_editor_engine.add_changes(root.current_file, prev_content, content)
+            root.code_editor_engine.track_file_snapshot(root.current_file, content)
         
         filename = os.path.basename(root.current_file)
         QMessageBox.information(root, "Success", f"File saved: {filename}")
@@ -436,7 +435,7 @@ def on_run_project(root):
         pass
 
 def toggle_chatbot(root, show):
-    """(Deprecated) Kept for compatibility."""
+    """Deprecated: chatbot is now global."""
     return
 
 
@@ -506,20 +505,11 @@ def _clear_terminal(root):
 def _open_debug_from_terminal(root):
     if not root.terminal:
         return
-    toggle_chatbot(root, True)
-    if root.chatbot_widget:
-        output = (root.last_command_output or "").strip()
-        root.chatbot_widget.set_mode("debug")
-        if output:
-            root.chatbot_widget.set_input_text(
-                "Please debug this terminal output:\n\n" + output
-            )
-        else:
-            QMessageBox.information(
-                root,
-                "No Terminal Output",
-                "No output was captured after the last command.",
-            )
+    QMessageBox.information(
+        root,
+        "AI Chat",
+        "Use the global AI button to open chat, then paste the terminal output.",
+    )
 
 
 def _stop_terminal_process(root):
@@ -532,14 +522,8 @@ def record_editor_diff(root):
         return
     if not root.current_file:
         return
-    prev_content = ""
-    try:
-        with open(root.current_file, "r", encoding="utf-8") as f:
-            prev_content = f.read()
-    except Exception:
-        prev_content = ""
     curr_content = root.code_editor.text() if root.code_editor else ""
-    root.code_editor_engine.add_changes(root.current_file, prev_content, curr_content)
+    root.code_editor_engine.record_file_change(root.current_file, curr_content)
 
 
 class CodeEditorWidget(QWidget):
@@ -564,13 +548,6 @@ class CodeEditorWidget(QWidget):
             try:
                 self.editor_widget.ai_worker.terminate()
                 self.editor_widget.ai_worker.wait(1000)
-            except:
-                pass
-        
-        # Clean up chatbot
-        if hasattr(self.editor_widget, 'chatbot_widget') and self.editor_widget.chatbot_widget:
-            try:
-                self.editor_widget.chatbot_widget.close()
             except:
                 pass
         

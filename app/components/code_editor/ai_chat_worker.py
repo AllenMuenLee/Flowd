@@ -193,7 +193,8 @@ class AIChatWorker(QObject):
                 }
             ]
 
-            messages.extend(self.conversation_history)
+            if isinstance(self.conversation_history, list):
+                messages.extend(self.conversation_history)
             messages.append({"role": "user", "content": self.user_message})
 
             max_retries = 2

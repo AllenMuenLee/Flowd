@@ -1295,6 +1295,24 @@ class CanvaWidget(QWidget):
         canvas_widget = build_canva(flowchart_data, on_back=on_back)
         self.canvas_widget = canvas_widget  # ✅ Store reference
         layout.addWidget(canvas_widget)
+
+    def reload_flowchart(self):
+        cache = load_cache()
+        project_id = cache.get("current_project_id")
+        if not project_id:
+            return
+        appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+        flowchart_path = os.path.join(appdata_root, f"{project_id}.flowchart.json")
+        if not os.path.exists(flowchart_path):
+            return
+        try:
+            with open(flowchart_path, "r", encoding="utf-8") as f:
+                flowchart_data = json.load(f)
+        except Exception:
+            return
+        if self.canvas_widget:
+            self.canvas_widget.flowchart_data = flowchart_data
+            load_flowchart(self.canvas_widget, flowchart_data)
     
     def showEvent(self, event):
         if self.parent():

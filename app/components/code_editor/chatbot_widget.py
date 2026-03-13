@@ -10,11 +10,12 @@ from app.components.code_editor.ai_chat_worker import AIChatWorker
 class ChatbotWidget(QWidget):
     """Chatbot sidebar widget with AI integration."""
 
-    def __init__(self, project_root, flowchart_data, parent=None, on_user_message=None):
+    def __init__(self, project_root, flowchart_data, parent=None, on_user_message=None, on_response=None):
         super().__init__(parent)
         self.project_root = project_root
         self.flowchart_data = flowchart_data
         self.on_user_message = on_user_message
+        self.on_response = on_response
         self.conversation_history = []
         self.current_worker = None
         self.worker_thread = None
@@ -164,6 +165,12 @@ class ChatbotWidget(QWidget):
 
             self.conversation_history.append({"role": "user", "content": message})
             self.conversation_history.append({"role": "assistant", "content": response})
+
+            if self.on_response:
+                try:
+                    self.on_response()
+                except Exception:
+                    pass
 
             self.send_btn.setEnabled(True)
             self.current_worker = None

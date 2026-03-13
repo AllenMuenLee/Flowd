@@ -56,6 +56,7 @@ class CodeEditor:
         self.edits: Dict[str, List[List[object]]] = {}
         self.changes: Dict[str, Dict[str, Dict[str, object]]] = {}
         self.file_changes: Dict[str, Dict[str, object]] = {}
+        self.file_snapshots: Dict[str, str] = {}
         self.edit_log: List[Dict[str, str]] = []
 
     def add_changes(
@@ -87,6 +88,18 @@ class CodeEditor:
             "curr": curr_content,
             "diff": diff,
         }
+
+    def track_file_snapshot(self, file_path: str, content: str) -> None:
+        if not file_path:
+            return
+        self.file_snapshots[file_path] = content or ""
+
+    def record_file_change(self, file_path: str, curr_content: str) -> None:
+        if not file_path:
+            return
+        prev_content = self.file_snapshots.get(file_path, "")
+        self.add_changes(file_path, prev_content, curr_content or "")
+        self.file_snapshots[file_path] = curr_content or ""
 
     def add_node_changes(
         self,

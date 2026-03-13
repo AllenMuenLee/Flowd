@@ -156,7 +156,37 @@ def main():
     layout.addWidget(stacked)
     stacked.setCurrentIndex(0)
 
-    chat_overlay = QWidget(window)
+    class DraggableOverlay(QWidget):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self._dragging = False
+            self._drag_offset = None
+
+        def mousePressEvent(self, event):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._dragging = True
+                self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.accept()
+                return
+            super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event):
+            if self._dragging and self._drag_offset:
+                new_pos = event.globalPosition().toPoint() - self._drag_offset
+                self.move(new_pos)
+                event.accept()
+                return
+            super().mouseMoveEvent(event)
+
+        def mouseReleaseEvent(self, event):
+            if self._dragging:
+                self._dragging = False
+                self._drag_offset = None
+                event.accept()
+                return
+            super().mouseReleaseEvent(event)
+
+    chat_overlay = DraggableOverlay(window)
     chat_overlay.setObjectName("GlobalChatOverlay")
     chat_overlay.setAutoFillBackground(True)
     chat_overlay.setStyleSheet("""
@@ -236,6 +266,12 @@ def main():
 
     chat_widget = {"instance": None}
 
+    def _reload_canvas_if_any():
+        if stacked.count() > 3:
+            canvas_widget = stacked.widget(3)
+            if isinstance(canvas_widget, CanvaWidget):
+                canvas_widget.reload_flowchart()
+
     def _on_chat_message():
         current = stacked.currentWidget()
         if isinstance(current, CodeEditorWidget):
@@ -251,6 +287,7 @@ def main():
             flowchart_data,
             parent=chat_overlay,
             on_user_message=_on_chat_message,
+            on_response=_reload_canvas_if_any,
         )
         chat_overlay_layout.addWidget(widget)
         chat_widget["instance"] = widget
