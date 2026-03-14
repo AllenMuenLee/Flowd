@@ -1,6 +1,6 @@
 import os
 import json
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QInputDialog, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QInputDialog, QApplication, QSplitter
 from PyQt6.QtGui import QKeySequence, QShortcut, QColor, QTextCursor
 from PyQt6.QtCore import Qt, QProcess
 from PyQt6.Qsci import (
@@ -15,6 +15,7 @@ from PyQt6.Qsci import (
 import src.utils.Terminal as Terminal
 from src.utils.CacheMng import load_cache, save_cache
 from app.components.code_editor.toolbar import build_toolbar
+from app.components.code_editor.chatbot_widget import ChatbotWidget
 from app.components.code_editor.content_splitter import build_content_splitter
 from app.components.code_editor.editor_panel import apply_editor_theme
 from app.components.code_editor import file_panel as file_panel_actions
@@ -417,8 +418,33 @@ def on_run_project(root):
         pass
 
 def toggle_chatbot(root, show):
-    """(Deprecated) Kept for compatibility."""
-    return
+    if not show:
+        return
+    window = root.window() if hasattr(root, "window") else None
+    if not window:
+        return
+    ai_btn = window.findChild(QPushButton, "GlobalFloatingAIButton")
+    if ai_btn and not ai_btn.isChecked():
+        ai_btn.click()
+
+    splitter = None
+    widget = root
+    while widget:
+        if isinstance(widget, QSplitter):
+            splitter = widget
+            break
+        widget = widget.parentWidget()
+
+    if splitter is None:
+        splitter = window.findChild(QSplitter)
+
+    chat_widget = None
+    if splitter and splitter.count() > 0:
+        candidate = splitter.widget(0)
+        if isinstance(candidate, ChatbotWidget):
+            chat_widget = candidate
+
+    root.chatbot_widget = chat_widget
 
 
 def record_editor_diff(editor_widget) -> bool:

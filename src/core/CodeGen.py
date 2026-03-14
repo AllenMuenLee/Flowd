@@ -203,7 +203,7 @@ class CodingAgent:
         or ask questions if the code is repeated or not clear context, please don't skip asking question even if the code is short.
         """
         
-        for attempt in range(2):
+        for attempt in range(6):
             try:
                 response = client.chat.completions.create(
                     model="nova-pro-v1",
@@ -229,21 +229,8 @@ class CodingAgent:
             
             except Exception as e:
                 print("error generating")
-                if is_rate_limit_error(e) and attempt < 1:
-                    retry_seconds = extract_retry_seconds(str(e), 10)
-                    if callable(self._progress):
-                        try:
-                            self._progress(
-                                "rate-limit",
-                                f"Request per minute exceeded. Retrying in {retry_seconds} seconds..."
-                            )
-                        except Exception:
-                            pass
-                    else:
-                        print(
-                            f"Request per minute exceeded. Retrying in {retry_seconds} seconds..."
-                        )
-                    time.sleep(retry_seconds)
+                if is_rate_limit_error(e):
+                    time.sleep(10)
                     continue
                 raise  # Re-raise other exceptions
 

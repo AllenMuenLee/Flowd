@@ -337,7 +337,7 @@ class CodeEditor:
             """
 
             response = None
-            for attempt in range(2):
+            for attempt in range(6):
                 try:
                     response = client.chat.completions.create(
                         model="nova-pro-v1",
@@ -351,13 +351,8 @@ class CodeEditor:
                     )
                     break
                 except Exception as exc:
-                    if is_rate_limit_error(exc) and attempt < 1:
-                        retry_seconds = extract_retry_seconds(str(exc))
-                        if progress:
-                            progress(
-                                f"Request per minute exceeded. Retrying in {retry_seconds} seconds..."
-                            )
-                        time.sleep(retry_seconds)
+                    if is_rate_limit_error(exc):
+                        time.sleep(10)
                         continue
                     raise
             text = response.choices[0].message.content or ""

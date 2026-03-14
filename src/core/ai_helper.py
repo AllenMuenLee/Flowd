@@ -82,7 +82,7 @@ def generate_flowchart_from_description(task_description, project_name):
             }}
         ]
     }}
-
+    The example shows a tree of depth 2, add more depth if necessary.
     - "framework": comma-separated list of tools/languages needed for the ENTIRE project
     - "filenames": list of files needed for each individual node"""
 

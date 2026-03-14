@@ -145,7 +145,7 @@ class AstFlowchartGenerator:
 
         client = self._get_client()
         response = None
-        for attempt in range(2):
+        for attempt in range(6):
             try:
                 response = client.chat.completions.create(
                     model="nova-pro-v1",
@@ -159,11 +159,7 @@ class AstFlowchartGenerator:
                 )
                 break
             except Exception as exc:
-                if is_rate_limit_error(exc) and attempt < 1:
-                    retry_seconds = extract_retry_seconds(str(exc))
-                    print(
-                        f"Request per minute exceeded. Retrying in {retry_seconds} seconds..."
-                    )
+                if is_rate_limit_error(exc):
                     time.sleep(retry_seconds)
                     continue
                 raise
