@@ -1,4 +1,5 @@
 import os
+import json
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QInputDialog, QApplication
 from PyQt6.QtGui import QKeySequence, QShortcut, QColor, QTextCursor
 from PyQt6.QtCore import Qt, QProcess
@@ -12,6 +13,7 @@ from PyQt6.Qsci import (
     QsciLexerCPP,
 )
 import src.utils.Terminal as Terminal
+from src.utils.CacheMng import load_cache, save_cache
 from app.components.code_editor.toolbar import build_toolbar
 from app.components.code_editor.content_splitter import build_content_splitter
 from app.components.code_editor.editor_panel import apply_editor_theme
@@ -121,13 +123,6 @@ def build_code_editor(flowchart_data=None, on_back_to_canvas=None) -> QWidget:
     if flowchart_data:
         project_root = flowchart_data.get('project_root', '')
         file_panel_actions.set_project_root(root.file_tree, root.file_model, project_root)
-        if project_root:
-            from src.core.CodeEdt import CodeEditor as CodeEditorEngine
-            root.code_editor_engine = CodeEditorEngine(project_root)
-        else:
-            root.code_editor_engine = None
-    else:
-        root.code_editor_engine = None
 
     return root
 
@@ -364,18 +359,10 @@ def save_file(root):
         return
     
     try:
-        prev_content = ""
-        try:
-            with open(root.current_file, 'r', encoding='utf-8') as f:
-                prev_content = f.read()
-        except Exception:
-            prev_content = ""
-
         content = root.code_editor.text()
-
+        
         with open(root.current_file, 'w', encoding='utf-8') as f:
             f.write(content)
-
         
         filename = os.path.basename(root.current_file)
         QMessageBox.information(root, "Success", f"File saved: {filename}")
@@ -430,8 +417,49 @@ def on_run_project(root):
         pass
 
 def toggle_chatbot(root, show):
-    """Deprecated: chatbot is now global."""
+    """(Deprecated) Kept for compatibility."""
     return
+
+
+def record_editor_diff(editor_widget) -> bool:
+    if not editor_widget or not getattr(editor_widget, "flowchart_data", None):
+        return False
+    flowchart_data = editor_widget.flowchart_data
+    if not isinstance(flowchart_data, dict):
+        return False
+    project_id = (load_cache() or {}).get("current_project_id")
+    if not project_id:
+        return False
+    appdata_root = os.path.join(os.getenv("APPDATA", ""), "SVCA")
+    flowchart_path = os.path.join(appdata_root, f"{project_id}.flowchart.json")
+    if not os.path.exists(flowchart_path):
+        return False
+    try:
+        with open(flowchart_path, "r", encoding="utf-8") as fh:
+            curr_text = fh.read()
+        curr_flowchart = json.loads(curr_text) if curr_text else {}
+    except Exception:
+        return False
+
+    cache = load_cache()
+    prev_text = cache.get("editor_last_flowchart", "")
+    if prev_text == curr_text:
+        return False
+    try:
+        prev_flowchart = json.loads(prev_text) if prev_text else {}
+    except Exception:
+        prev_flowchart = {}
+
+    engine = getattr(editor_widget, "code_editor_engine", None)
+    if engine:
+        try:
+            engine.add_changes(prev_flowchart, curr_flowchart)
+        except Exception:
+            pass
+
+    cache["editor_last_flowchart"] = curr_text
+    save_cache(cache)
+    return True
 
 
 
@@ -457,7 +485,6 @@ def _run_in_terminal(root, command: str, cwd: str | None):
     def on_finished(exit_code, exit_status):
         if root.terminal_input:
             root.terminal_input.setEnabled(True)
-            root.terminal_input.setPlaceholderText("Type command and press Enter...")
         if root.terminal_run_btn:
             root.terminal_run_btn.setEnabled(True)
         if root.stop_process_btn:
@@ -467,8 +494,7 @@ def _run_in_terminal(root, command: str, cwd: str | None):
         root.terminal_process = None
 
     if root.terminal_input:
-        root.terminal_input.setEnabled(True)
-        root.terminal_input.setPlaceholderText("Process running — type input and press Enter...")
+        root.terminal_input.setEnabled(False)
     if root.terminal_run_btn:
         root.terminal_run_btn.setEnabled(False)
     if root.stop_process_btn:
@@ -500,24 +526,25 @@ def _clear_terminal(root):
 def _open_debug_from_terminal(root):
     if not root.terminal:
         return
-    QMessageBox.information(
-        root,
-        "AI Chat",
-        "Use the global AI button to open chat, then paste the terminal output.",
-    )
+    toggle_chatbot(root, True)
+    if root.chatbot_widget:
+        output = (root.last_command_output or "").strip()
+        root.chatbot_widget.set_mode("debug")
+        if output:
+            root.chatbot_widget.set_input_text(
+                "Please debug this terminal output:\n\n" + output
+            )
+        else:
+            QMessageBox.information(
+                root,
+                "No Terminal Output",
+                "No output was captured after the last command.",
+            )
 
 
 def _stop_terminal_process(root):
     if hasattr(root, "terminal_process") and root.terminal_process:
         Terminal.stop_process(root.terminal_process)
-
-
-def record_editor_diff(root):
-    if not root or not getattr(root, "code_editor_engine", None):
-        return
-    if not root.current_file:
-        return
-    curr_content = root.code_editor.text() if root.code_editor else ""
 
 
 class CodeEditorWidget(QWidget):
@@ -545,12 +572,11 @@ class CodeEditorWidget(QWidget):
             except:
                 pass
         
+        # Clean up chatbot
+        if hasattr(self.editor_widget, 'chatbot_widget') and self.editor_widget.chatbot_widget:
+            try:
+                self.editor_widget.chatbot_widget.close()
+            except:
+                pass
+        
         super().closeEvent(event)
-
-
-
-
-
-
-
-

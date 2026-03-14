@@ -77,10 +77,7 @@ def open_system_terminal(project_root: str, command: Optional[str] = None) -> No
     """Open the system terminal in the project directory."""
     system = platform.system()
     if system == "Windows":
-        cmd = f'cd /d "{project_root}"'
-        if command:
-            cmd += f" && {command}"
-        QProcess.startDetached("cmd", ["/K", cmd])
+        QProcess.startDetached("cmd", ["/K", f'cd /d "{project_root}"'])
         return
     if system == "Darwin":
         script = f'cd "{project_root}"'
@@ -90,8 +87,5 @@ def open_system_terminal(project_root: str, command: Optional[str] = None) -> No
         return
     terminals = ["gnome-terminal", "konsole", "xterm"]
     for term in terminals:
-        args = ["--working-directory", project_root]
-        if command:
-            args += ["--", "bash", "-c", command]
-        if QProcess.startDetached(term, args):
+        if QProcess.startDetached(term, ["--working-directory", project_root]):
             break
